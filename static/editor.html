@@ -1,0 +1,2004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Editor - Auto-Narrated Video Tool</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+
+        .editor-container {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            grid-template-rows: auto 1fr auto;
+            height: 100vh;
+            gap: 1px;
+            background: #333;
+        }
+
+        .header {
+            grid-column: 1 / -1;
+            background: #1a1a1a;
+            padding: 1rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333;
+        }
+
+        .header h1 {
+            font-size: 1.25rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: #e0e0e0;
+        }
+
+        .btn-secondary:hover {
+            background: #444;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        .btn-success {
+            background: #4ade80;
+            color: #0f0f0f;
+        }
+
+        .btn-warning {
+            background: #f59e0b;
+            color: #0f0f0f;
+        }
+
+        .btn-warning:hover {
+            background: #d97706;
+        }
+
+        /* Preview loading states */
+        .preview-btn.loading {
+            background: #f59e0b !important;
+            color: #000;
+            animation: pulse-fast 0.8s infinite;
+        }
+
+        @keyframes pulse-fast {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .segment-card.previewing {
+            border-color: #667eea !important;
+            box-shadow: 0 0 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .segment-card.previewing::before {
+            content: '▶ PREVIEWING';
+            position: absolute;
+            top: -10px;
+            right: 10px;
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            z-index: 10;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary.has-changes {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .video-panel {
+            background: #0f0f0f;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .video-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background: #000;
+        }
+
+        .video-wrapper video {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 8px;
+        }
+
+        .video-controls {
+            padding: 1rem;
+            background: #1a1a1a;
+            border-top: 1px solid #333;
+        }
+
+        .timeline {
+            width: 100%;
+            height: 60px;
+            background: #0f0f0f;
+            border-radius: 8px;
+            position: relative;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+
+        .timeline-segments {
+            display: flex;
+            height: 40px;
+            margin-top: 10px;
+        }
+
+        .timeline-segment {
+            height: 100%;
+            border-right: 1px solid #333;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: #888;
+            background: #2a2a4a;
+        }
+
+        .timeline-segment:hover {
+            background: #3a3a5a;
+        }
+
+        .timeline-segment.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .timeline-playhead {
+            position: absolute;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            background: #ef4444;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .play-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #667eea;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .time-display {
+            font-family: monospace;
+            color: #888;
+        }
+
+        .frame-controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-left: auto;
+        }
+
+        .frame-btn {
+            padding: 0.5rem 0.75rem;
+            background: #333;
+            border: none;
+            border-radius: 4px;
+            color: #e0e0e0;
+            cursor: pointer;
+        }
+
+        .frame-btn:hover {
+            background: #444;
+        }
+
+        .narration-toggle {
+            background: #333;
+            border: 1px solid #444;
+        }
+
+        .narration-toggle.active {
+            background: #667eea;
+            border-color: #667eea;
+            color: white;
+        }
+
+        .narration-toggle:not(.active) {
+            opacity: 0.6;
+        }
+
+        .segments-panel {
+            background: #1a1a1a;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .segments-header {
+            padding: 1rem;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .segments-header h2 {
+            font-size: 1rem;
+            color: #aaa;
+        }
+
+        .segments-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }
+
+        .segment-card {
+            background: #0f0f0f;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            overflow: visible;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .segment-card.active {
+            border-color: #667eea;
+        }
+
+        .segment-card-header {
+            padding: 0.75rem;
+            background: #1a1a1a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .segment-card-header:hover {
+            background: #222;
+        }
+
+        .segment-info {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .segment-number {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+        }
+
+        .segment-time {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .segment-actions {
+            display: flex;
+            gap: 0.25rem;
+        }
+
+        .segment-action-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            border: none;
+            background: #333;
+            color: #aaa;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .segment-action-btn:hover {
+            background: #444;
+            color: #fff;
+        }
+
+        .segment-card-body {
+            padding: 0.75rem;
+        }
+
+        .segment-frames {
+            display: flex;
+            gap: 0.25rem;
+            margin-bottom: 0.75rem;
+            overflow-x: auto;
+        }
+
+        .segment-frame {
+            width: 60px;
+            height: 40px;
+            border-radius: 4px;
+            object-fit: cover;
+            cursor: pointer;
+            border: 2px solid transparent;
+            flex-shrink: 0;
+        }
+
+        .segment-frame:hover {
+            border-color: #667eea;
+        }
+
+        .segment-frame.active {
+            border-color: #4ade80;
+        }
+
+        .narration-textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 0.75rem;
+            border: 1px solid #333;
+            border-radius: 6px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            font-size: 0.9rem;
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        .narration-textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .segment-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 0.5rem;
+        }
+
+        .word-count {
+            font-size: 0.75rem;
+            color: #4ade80;
+        }
+
+        .word-count.over-limit {
+            color: #f59e0b;
+        }
+
+        .speed-adjust {
+            color: #667eea;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .speed-adjust:hover {
+            color: #818cf8;
+        }
+
+        .speed-adjusted {
+            color: #4ade80;
+        }
+
+        .audio-status {
+            font-size: 0.75rem;
+            color: #4ade80;
+            margin-left: 0.5rem;
+        }
+
+        .audio-status.outdated {
+            color: #f59e0b;
+            cursor: pointer;
+        }
+
+        .preview-btn {
+            padding: 0.4rem 0.75rem;
+            background: #333;
+            border: none;
+            border-radius: 4px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .preview-btn:hover {
+            background: #444;
+        }
+
+        .status-bar {
+            grid-column: 1 / -1;
+            background: #1a1a1a;
+            padding: 0.5rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #333;
+            font-size: 0.85rem;
+        }
+
+        .status-text {
+            color: #888;
+        }
+
+        .status-text.saving {
+            color: #f59e0b;
+        }
+
+        .status-text.saved {
+            color: #4ade80;
+        }
+
+        .voice-selector {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .voice-selector label {
+            color: #888;
+        }
+
+        .voice-selector select {
+            padding: 0.4rem 0.75rem;
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #e0e0e0;
+            cursor: pointer;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .loading-overlay.hidden {
+            display: none;
+        }
+
+        .loading-content {
+            text-align: center;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #333;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .modal.hidden {
+            display: none;
+        }
+
+        .modal-content {
+            background: #1a1a1a;
+            padding: 2rem;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .modal-content h3 {
+            margin-bottom: 1rem;
+        }
+
+        .modal-content p {
+            color: #888;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: flex-end;
+        }
+    </style>
+</head>
+<body>
+    <div class="editor-container">
+        <header class="header">
+            <h1>Video Editor</h1>
+            <div class="header-actions">
+                <a href="/" class="btn btn-secondary">← Back</a>
+                <button class="btn btn-secondary" id="regenerateAllBtn">Regenerate All</button>
+                <button class="btn btn-secondary" id="previewAllBtn">▶ Preview All</button>
+                <button class="btn btn-primary" id="renderBtn">Render Video</button>
+                <a href="#" class="btn btn-success" id="downloadBtn">⬇ Download</a>
+            </div>
+        </header>
+
+        <div class="video-panel">
+            <div class="video-wrapper">
+                <video id="videoPlayer" controls>
+                    <source src="" type="video/mp4">
+                </video>
+            </div>
+            <div class="video-controls">
+                <div class="timeline" id="timeline">
+                    <div class="timeline-playhead" id="playhead"></div>
+                    <div class="timeline-segments" id="timelineSegments"></div>
+                </div>
+                <div class="playback-controls">
+                    <button class="play-btn" id="playBtn">▶</button>
+                    <span class="time-display" id="timeDisplay">00:00 / 00:00</span>
+                    <button class="frame-btn narration-toggle active" id="narrationToggle" title="Toggle narration during playback">🔊 Narration</button>
+                    <div class="frame-controls">
+                        <button class="frame-btn" id="prevFrameBtn">◀◀ -1s</button>
+                        <button class="frame-btn" id="prevSegBtn">◀ Prev</button>
+                        <button class="frame-btn" id="nextSegBtn">Next ▶</button>
+                        <button class="frame-btn" id="nextFrameBtn">+1s ▶▶</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="segments-panel">
+            <div class="segments-header">
+                <h2>Segments</h2>
+                <div class="voice-selector">
+                    <label>Voice:</label>
+                    <select id="voiceSelect">
+                        <optgroup label="Female">
+                            <option value="en-GB-LibbyNeural">Libby</option>
+                            <option value="en-GB-SoniaNeural">Sonia</option>
+                            <option value="en-US-EmmaNeural">Emma</option>
+                            <option value="en-US-JennyNeural">Jenny</option>
+                        </optgroup>
+                        <optgroup label="Male">
+                            <option value="en-US-GuyNeural">Guy</option>
+                            <option value="en-GB-RyanNeural">Ryan</option>
+                            <option value="en-US-ChristopherNeural">Christopher</option>
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
+            <div class="segments-list" id="segmentsList"></div>
+        </div>
+
+        <div class="status-bar">
+            <span class="status-text" id="statusText">Ready</span>
+            <span id="projectInfo"></span>
+        </div>
+    </div>
+
+    <div class="loading-overlay hidden" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p id="loadingText">Loading...</p>
+        </div>
+    </div>
+
+    <div class="modal hidden" id="renderModal">
+        <div class="modal-content">
+            <h3>Render Video with Your Edits</h3>
+            <p>This will create a new video with your edited narration:</p>
+            <ol style="margin: 1rem 0; padding-left: 1.5rem; color: #aaa;">
+                <li>Generate voiceover audio from your edited text</li>
+                <li>Apply any speed adjustments for longer narrations</li>
+                <li>Combine everything into a final video</li>
+            </ol>
+            <p style="color: #4ade80; font-size: 0.9rem;">After rendering, you can download the updated video.</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="cancelRenderBtn">Cancel</button>
+                <button class="btn btn-success" id="confirmRenderBtn">Render & Download</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get project ID from URL
+        const pathParts = window.location.pathname.split('/');
+        const projectId = pathParts[pathParts.length - 1];
+
+        let projectState = null;
+        let segments = [];
+        let currentSegmentIndex = 0;
+        let isPlaying = false;
+        let currentPreviewAudio = null;  // Track current playing preview
+        let isPreviewLoading = false;    // Prevent double-clicks on preview
+        let narrationEnabled = true;     // Toggle for narration during playback
+        let segmentAudioCache = {};      // Cache for preloaded segment audio
+        let currentNarrationAudio = null; // Currently playing narration during video
+        let lastPlayedSegment = -1;      // Track which segment narration was last played
+        let segmentAudioDirty = {};      // Track which segments have edited text (audio outdated)
+        let originalNarrations = {};     // Store original narration text to detect changes
+        let hasUnsavedChanges = false;   // Track if any edits need re-rendering
+        let outputReady = false;         // Track if output video is ready for download
+        let audioQueue = [];             // Queue for segment audio to play (ensures no cutoff)
+        let isNarrationPlaying = false;  // Track if narration is currently playing
+        let activePreviewSegment = -1;   // Which segment has an active preview (-1 = none)
+        let isPreviewPaused = false;     // Is the current preview paused?
+
+        // Word count helpers
+        const WPM = 130; // Words per minute for comfortable narration
+
+        function countWords(text) {
+            if (!text) return 0;
+            return text.trim().split(/\s+/).filter(w => w.length > 0).length;
+        }
+
+        function getMaxWords(duration) {
+            return Math.max(5, Math.floor((duration / 60) * WPM * 0.85));
+        }
+
+        function getWordCountDisplay(text, duration, idx) {
+            const words = countWords(text);
+            const maxWords = getMaxWords(duration);
+            const overBy = words - maxWords;
+            if (overBy > 0) {
+                const speedNeeded = calculateRequiredSpeed(words, duration);
+                const slowPercent = Math.round((1 - speedNeeded) * 100);
+                return `${words}/${maxWords} <span class="speed-adjust" onclick="toggleSpeedAdjust(${idx}, ${speedNeeded})" title="Click to slow video by ${slowPercent}%">⚠ slow ${slowPercent}%?</span>`;
+            }
+            return `${words}/${maxWords} words`;
+        }
+
+        // Track speed adjustments per segment
+        let segmentSpeedAdjust = {};
+
+        function calculateRequiredSpeed(words, duration) {
+            // How long narration will take at normal speed
+            const narrationDuration = (words / WPM) * 60;
+            if (narrationDuration <= duration) return 1.0; // No slowdown needed
+            // Speed ratio needed (e.g., 0.75 = 75% speed = slower)
+            return Math.max(0.5, duration / narrationDuration); // Min 0.5x speed
+        }
+
+        function updateWordCount(idx, text, duration) {
+            const words = countWords(text);
+            const maxWords = getMaxWords(duration);
+            const el = document.getElementById(`wordcount-${idx}`);
+            if (!el) return;
+
+            const overBy = words - maxWords;
+            const speedNeeded = calculateRequiredSpeed(words, duration);
+
+            if (overBy > 0) {
+                const slowPercent = Math.round((1 - speedNeeded) * 100);
+                el.innerHTML = `${words}/${maxWords} <span class="speed-adjust" onclick="toggleSpeedAdjust(${idx}, ${speedNeeded})" title="Click to slow video by ${slowPercent}%">⚠ slow ${slowPercent}%?</span>`;
+                el.classList.add('over-limit');
+
+                // Check if speed adjust is already enabled
+                if (segmentSpeedAdjust[idx]) {
+                    el.innerHTML = `${words}/${maxWords} <span class="speed-adjusted">🐢 ${slowPercent}% slower</span>`;
+                    el.classList.remove('over-limit');
+                }
+            } else {
+                el.textContent = `${words}/${maxWords} words`;
+                el.classList.remove('over-limit');
+                el.title = `${maxWords - words} words remaining`;
+                delete segmentSpeedAdjust[idx]; // Remove speed adjust if text now fits
+            }
+
+            // Mark audio as outdated if text changed
+            const original = originalNarrations[idx] || '';
+            if (text !== original) {
+                markAudioOutdated(idx);
+            }
+        }
+
+        function toggleSpeedAdjust(idx, speed) {
+            segmentSpeedAdjust[idx] = speed;
+            const seg = segments[idx];
+            const text = document.getElementById(`narration-${idx}`)?.value || seg.narration;
+            updateWordCount(idx, text, seg.end_time - seg.start_time);
+            setStatus(`Segment ${idx + 1} will be slowed to fit narration`, 'saved');
+        }
+
+        function markAudioOutdated(idx) {
+            segmentAudioDirty[idx] = true;
+            const statusEl = document.getElementById(`audiostatus-${idx}`);
+            if (statusEl) {
+                statusEl.textContent = '⚠ sync';
+                statusEl.classList.add('outdated');
+                statusEl.title = 'Click to regenerate audio';
+                statusEl.onclick = () => regenerateSegmentAudio(idx);
+            }
+            delete segmentAudioCache[idx];
+        }
+
+        function markAudioSynced(idx) {
+            segmentAudioDirty[idx] = false;
+            const statusEl = document.getElementById(`audiostatus-${idx}`);
+            if (statusEl) {
+                statusEl.textContent = '✓';
+                statusEl.classList.remove('outdated');
+                statusEl.title = 'Audio synced';
+                statusEl.onclick = null;
+            }
+            // Clear preview cache so next preview uses new audio
+            delete previewAudioCache[idx];
+            // Also clear segment audio cache
+            delete segmentAudioCache[idx];
+        }
+
+        async function regenerateSegmentAudio(idx) {
+            const seg = segments[idx];
+            const text = document.getElementById(`narration-${idx}`)?.value || seg.narration;
+
+            if (!text) {
+                alert('No narration text');
+                return;
+            }
+
+            const statusEl = document.getElementById(`audiostatus-${idx}`);
+            if (statusEl) {
+                statusEl.textContent = '⏳';
+                statusEl.title = 'Generating...';
+            }
+
+            setStatus(`Regenerating audio for segment ${idx + 1}...`, 'saving');
+
+            try {
+                // First save the narration text
+                await fetch(`/api/editor/${projectId}/segments/${idx}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ narration: text })
+                });
+
+                // Then regenerate audio
+                const response = await fetch(`/api/editor/${projectId}/segments/${idx}/regenerate`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    // Update segment with new audio path
+                    if (data.audio_path) {
+                        segments[idx].audio_path = data.audio_path;
+                    }
+
+                    // Update original narration tracker
+                    originalNarrations[idx] = text;
+                    segments[idx].narration = text;
+
+                    // Mark as synced
+                    markAudioSynced(idx);
+
+                    // Preload the new audio with cache-busting
+                    setStatus(`Loading new audio for segment ${idx + 1}...`, 'saving');
+                    await preloadSegmentAudioFresh(idx);
+
+                    setStatus(`✓ Segment ${idx + 1} audio ready!`, 'saved');
+                } else {
+                    throw new Error('Regeneration failed');
+                }
+            } catch (error) {
+                setStatus('Regeneration failed', '');
+                console.error('Regenerate error:', error);
+                if (statusEl) {
+                    statusEl.textContent = '✗';
+                    statusEl.title = 'Failed';
+                }
+            }
+        }
+
+        // Preload audio with cache-busting for fresh regenerated files
+        async function preloadSegmentAudioFresh(idx) {
+            const seg = segments[idx];
+            if (!seg.audio_path) return;
+
+            try {
+                const filename = seg.audio_path.split('/').pop();
+                // Add timestamp to bust cache
+                const audioUrl = `/projects-files/${projectId}/audio/${filename}?t=${Date.now()}`;
+                const audio = new Audio();
+
+                await new Promise((resolve, reject) => {
+                    audio.oncanplaythrough = () => {
+                        // Cache the audio for instant playback
+                        segmentAudioCache[idx] = audio;
+                        resolve();
+                    };
+                    audio.onerror = reject;
+                    audio.src = audioUrl;
+                    audio.load();
+                });
+
+                console.log(`Audio for segment ${idx + 1} preloaded and ready`);
+            } catch (error) {
+                console.error(`Failed to preload audio for segment ${idx}:`, error);
+            }
+        }
+
+        // DOM elements
+        const videoPlayer = document.getElementById('videoPlayer');
+        const playBtn = document.getElementById('playBtn');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const timeline = document.getElementById('timeline');
+        const timelineSegments = document.getElementById('timelineSegments');
+        const playhead = document.getElementById('playhead');
+        const segmentsList = document.getElementById('segmentsList');
+        const voiceSelect = document.getElementById('voiceSelect');
+        const statusText = document.getElementById('statusText');
+        const projectInfo = document.getElementById('projectInfo');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingText = document.getElementById('loadingText');
+        const renderModal = document.getElementById('renderModal');
+
+        // Initialize
+        async function init() {
+            showLoading('Loading project...');
+            try {
+                // Load project state
+                const response = await fetch(`/api/editor/${projectId}`);
+                if (!response.ok) throw new Error('Project not found');
+
+                const data = await response.json();
+                projectState = data;
+                segments = data.segments;
+
+                // Set video source
+                videoPlayer.src = `/projects-files/${projectId}/input/${data.video_filename}`;
+
+                // Set voice
+                voiceSelect.value = data.voice || 'en-GB-LibbyNeural';
+
+                // Store original narrations to track changes
+                segments.forEach((seg, idx) => {
+                    originalNarrations[idx] = seg.narration || '';
+                });
+
+                // Render UI
+                renderTimeline();
+                renderSegments();
+
+                projectInfo.textContent = `Project: ${projectId} | ${segments.length} segments`;
+
+                // Show download button if output is ready
+                outputReady = data.output_ready;
+                updateDownloadButton();
+
+                // Preload segment audio files in background
+                preloadAllAudio();
+
+            } catch (error) {
+                console.error('Error loading project:', error);
+                alert('Failed to load project: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function showLoading(text) {
+            loadingText.textContent = text;
+            loadingOverlay.classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            loadingOverlay.classList.add('hidden');
+        }
+
+        function setStatus(text, type = '') {
+            statusText.textContent = text;
+            statusText.className = 'status-text ' + type;
+        }
+
+        function updateDownloadButton() {
+            const downloadBtn = document.getElementById('downloadBtn');
+            // Add timestamp to bust browser cache
+            downloadBtn.href = `/projects/${projectId}/download?t=${Date.now()}`;
+
+            if (outputReady && !hasUnsavedChanges) {
+                // Video is up to date
+                downloadBtn.textContent = '⬇ Download';
+                downloadBtn.className = 'btn btn-success';
+                downloadBtn.title = 'Download the rendered video';
+                downloadBtn.style.pointerEvents = 'auto';
+                downloadBtn.style.opacity = '1';
+            } else if (outputReady && hasUnsavedChanges) {
+                // Video exists but has pending edits
+                downloadBtn.textContent = '⬇ Download (old)';
+                downloadBtn.className = 'btn btn-warning';
+                downloadBtn.title = 'Download previous version. Click "Render Video" to include your edits.';
+                downloadBtn.style.pointerEvents = 'auto';
+                downloadBtn.style.opacity = '1';
+            } else {
+                // No video rendered yet
+                downloadBtn.textContent = '⬇ No video yet';
+                downloadBtn.className = 'btn btn-secondary';
+                downloadBtn.title = 'Click "Render Video" first to create a video';
+                downloadBtn.style.pointerEvents = 'none';
+                downloadBtn.style.opacity = '0.5';
+            }
+        }
+
+        function markHasChanges() {
+            hasUnsavedChanges = true;
+            const renderBtn = document.getElementById('renderBtn');
+            renderBtn.textContent = '⚡ Render Video';
+            renderBtn.title = 'You have edits. Click to re-render with your changes.';
+            renderBtn.classList.add('has-changes');
+            updateDownloadButton();
+        }
+
+        function clearChanges() {
+            hasUnsavedChanges = false;
+            const renderBtn = document.getElementById('renderBtn');
+            renderBtn.textContent = 'Render Video';
+            renderBtn.title = '';
+            renderBtn.classList.remove('has-changes');
+            updateDownloadButton();
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function renderTimeline() {
+            if (!projectState?.metadata?.duration) return;
+
+            const totalDuration = projectState.metadata.duration;
+            timelineSegments.innerHTML = '';
+
+            segments.forEach((seg, idx) => {
+                const width = ((seg.end_time - seg.start_time) / totalDuration) * 100;
+                const div = document.createElement('div');
+                div.className = 'timeline-segment' + (idx === currentSegmentIndex ? ' active' : '');
+                div.style.width = width + '%';
+                div.textContent = idx + 1;
+                div.onclick = () => jumpToSegment(idx);
+                timelineSegments.appendChild(div);
+            });
+        }
+
+        function renderSegments() {
+            segmentsList.innerHTML = '';
+
+            segments.forEach((seg, idx) => {
+                const card = document.createElement('div');
+                card.className = 'segment-card' + (idx === currentSegmentIndex ? ' active' : '');
+                card.id = `segment-${idx}`;
+
+                card.innerHTML = `
+                    <div class="segment-card-header" onclick="jumpToSegment(${idx})">
+                        <div class="segment-info">
+                            <span class="segment-number">${idx + 1}</span>
+                            <span class="segment-time">${formatTime(seg.start_time)} - ${formatTime(seg.end_time)}</span>
+                        </div>
+                        <div class="segment-actions">
+                            <button class="segment-action-btn" onclick="event.stopPropagation(); previewSegment(${idx})" title="Preview audio">🔊</button>
+                            <button class="segment-action-btn" onclick="event.stopPropagation(); regenerateSegment(${idx})" title="Regenerate">🔄</button>
+                        </div>
+                    </div>
+                    <div class="segment-card-body">
+                        <div class="segment-frames" id="frames-${idx}"></div>
+                        <textarea
+                            class="narration-textarea"
+                            id="narration-${idx}"
+                            placeholder="Enter narration text..."
+                            onchange="updateNarration(${idx}, this.value)"
+                            oninput="updateWordCount(${idx}, this.value, ${seg.end_time - seg.start_time})"
+                        >${seg.narration || ''}</textarea>
+                        <div class="segment-footer">
+                            <span class="word-count" id="wordcount-${idx}">${getWordCountDisplay(seg.narration || '', seg.end_time - seg.start_time, idx)}</span>
+                            <span class="audio-status" id="audiostatus-${idx}" title="Audio matches text">✓</span>
+                            <button class="preview-btn" onclick="previewSegment(${idx})">▶ Preview</button>
+                        </div>
+                    </div>
+                `;
+
+                segmentsList.appendChild(card);
+
+                // Load frame thumbnails
+                loadFrameThumbnails(idx, seg.frames);
+            });
+        }
+
+        async function loadFrameThumbnails(segIdx, frames) {
+            const container = document.getElementById(`frames-${segIdx}`);
+            if (!container || !frames) return;
+
+            frames.forEach((frame, fIdx) => {
+                const img = document.createElement('img');
+                img.className = 'segment-frame';
+                // Extract just the filename from the full path
+                const filename = frame.frame_path.split('/').pop();
+                img.src = `/projects-files/${projectId}/frames/${filename}`;
+                img.onclick = () => {
+                    videoPlayer.currentTime = frame.timestamp;
+                };
+                container.appendChild(img);
+            });
+        }
+
+        function jumpToSegment(idx) {
+            currentSegmentIndex = idx;
+            const seg = segments[idx];
+            videoPlayer.currentTime = seg.start_time;
+
+            // Update UI
+            document.querySelectorAll('.segment-card').forEach((el, i) => {
+                el.classList.toggle('active', i === idx);
+            });
+            document.querySelectorAll('.timeline-segment').forEach((el, i) => {
+                el.classList.toggle('active', i === idx);
+            });
+
+            // Scroll segment into view
+            document.getElementById(`segment-${idx}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        async function updateNarration(idx, text) {
+            segments[idx].narration = text;
+            setStatus('Saving...', 'saving');
+
+            // Check if text changed from original - mark audio as outdated
+            if (text !== originalNarrations[idx]) {
+                markAudioOutdated(idx);
+                markHasChanges();
+                // Clear preview cache so new text will be used
+                delete previewAudioCache[idx];
+            }
+
+            try {
+                await fetch(`/api/editor/${projectId}/segments/${idx}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ narration: text })
+                });
+                setStatus('Saved - Click "Render Video" to apply changes', 'saved');
+
+            } catch (error) {
+                setStatus('Save failed', '');
+                console.error('Save error:', error);
+            }
+        }
+
+        function stopAllAudio() {
+            // Stop preview audio
+            if (currentPreviewAudio) {
+                currentPreviewAudio.pause();
+                currentPreviewAudio.currentTime = 0;
+                if (currentPreviewAudio.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(currentPreviewAudio.src);
+                }
+                currentPreviewAudio = null;
+            }
+            // Stop narration audio
+            if (currentNarrationAudio) {
+                currentNarrationAudio.pause();
+                currentNarrationAudio.currentTime = 0;
+                currentNarrationAudio = null;
+            }
+            // Clear queue and state
+            audioQueue = [];
+            isNarrationPlaying = false;
+            isPreviewLoading = false;
+            activePreviewSegment = -1;
+            isPreviewPaused = false;
+        }
+
+        // Cache for preview audio URLs (generated on-the-fly)
+        let previewAudioCache = {};
+
+        async function previewSegment(idx) {
+            // Prevent double-clicks while loading
+            if (isPreviewLoading) {
+                console.log('Preview already loading, ignoring click');
+                return;
+            }
+
+            const seg = segments[idx];
+            const text = document.getElementById(`narration-${idx}`)?.value || seg.narration;
+
+            if (!text) {
+                alert('No narration text to preview');
+                return;
+            }
+
+            // Check if this is the same segment that's currently previewing
+            if (activePreviewSegment === idx && currentPreviewAudio) {
+                // Toggle pause/resume for this segment
+                if (isPreviewPaused) {
+                    // Resume playback
+                    currentPreviewAudio.play();
+                    videoPlayer.play();
+                    isPreviewPaused = false;
+                    const previewBtn = document.querySelector(`#segment-${idx} .preview-btn`);
+                    if (previewBtn) previewBtn.textContent = '⏸ Pause';
+                    setStatus(`▶ Resuming segment ${idx + 1}...`, 'saved');
+                } else {
+                    // Pause playback
+                    currentPreviewAudio.pause();
+                    videoPlayer.pause();
+                    isPreviewPaused = true;
+                    const previewBtn = document.querySelector(`#segment-${idx} .preview-btn`);
+                    if (previewBtn) previewBtn.textContent = '▶ Resume';
+                    setStatus(`⏸ Paused segment ${idx + 1}`, 'saved');
+                }
+                return;
+            }
+
+            // Different segment or no active preview - stop current and start new
+            stopAllAudio();
+            videoPlayer.pause();
+            activePreviewSegment = -1;
+            isPreviewPaused = false;
+
+            isPreviewLoading = true;
+
+            // Get the preview button for this segment
+            const previewBtn = document.querySelector(`#segment-${idx} .preview-btn`);
+            const originalBtnText = previewBtn ? previewBtn.textContent : '▶ Preview';
+
+            // Add visual indicator to segment card
+            const segmentCard = document.getElementById(`segment-${idx}`);
+            if (segmentCard) segmentCard.classList.add('previewing');
+
+            // Check if we can use cached/existing audio (text unchanged)
+            const textUnchanged = text === originalNarrations[idx];
+            const hasCachedAudio = previewAudioCache[idx] && previewAudioCache[idx].text === text;
+            const hasExistingAudio = seg.audio_path && textUnchanged;
+
+            let audioUrl = null;
+            let needsCleanup = false;
+
+            if (hasCachedAudio) {
+                // Use cached preview audio (already generated this session)
+                audioUrl = previewAudioCache[idx].url;
+                setStatus(`▶ Playing segment ${idx + 1} (cached)...`, 'saved');
+                if (previewBtn) previewBtn.textContent = '▶ Playing...';
+            } else if (hasExistingAudio) {
+                // Use existing audio file from server (instant!)
+                const filename = seg.audio_path.split('/').pop();
+                audioUrl = `/projects-files/${projectId}/audio/${filename}`;
+                setStatus(`▶ Playing segment ${idx + 1} (instant)...`, 'saved');
+                if (previewBtn) previewBtn.textContent = '▶ Playing...';
+            } else {
+                // Need to generate new audio (text was edited)
+                if (previewBtn) {
+                    previewBtn.textContent = '⏳ Generating...';
+                    previewBtn.classList.add('loading');
+                }
+
+                const wordCount = text.trim().split(/\s+/).length;
+                setStatus(`Generating audio for segment ${idx + 1} (${wordCount} words)...`, 'saving');
+
+                // Disable other preview buttons while loading
+                document.querySelectorAll('.preview-btn, .segment-action-btn').forEach(btn => {
+                    if (btn !== previewBtn) btn.disabled = true;
+                });
+
+                try {
+                    const response = await fetch(`/api/editor/preview-audio`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            text: text,
+                            voice: voiceSelect.value
+                        })
+                    });
+
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        audioUrl = URL.createObjectURL(blob);
+                        needsCleanup = true;
+
+                        // Cache for this session
+                        previewAudioCache[idx] = { text: text, url: audioUrl };
+                    } else {
+                        throw new Error('Audio generation failed');
+                    }
+                } catch (error) {
+                    setStatus(`✗ Preview failed: ${error.message}`, '');
+                    isPreviewLoading = false;
+                    if (previewBtn) {
+                        previewBtn.textContent = originalBtnText;
+                        previewBtn.classList.remove('loading');
+                    }
+                    if (segmentCard) segmentCard.classList.remove('previewing');
+                    document.querySelectorAll('.preview-btn, .segment-action-btn').forEach(btn => btn.disabled = false);
+                    return;
+                }
+            }
+
+            // Now play the audio with the video
+            if (!audioUrl) {
+                setStatus('✗ No audio available', '');
+                isPreviewLoading = false;
+                if (segmentCard) segmentCard.classList.remove('previewing');
+                return;
+            }
+
+            try {
+                currentPreviewAudio = new Audio(audioUrl);
+
+                // Jump video to segment start and update UI
+                videoPlayer.currentTime = seg.start_time;
+                currentSegmentIndex = idx;
+
+                // Update UI to show active segment
+                document.querySelectorAll('.segment-card').forEach((el, i) => {
+                    el.classList.toggle('active', i === idx);
+                });
+                document.querySelectorAll('.timeline-segment').forEach((el, i) => {
+                    el.classList.toggle('active', i === idx);
+                });
+
+                // Temporarily disable built-in narration sync during preview
+                const wasNarrationEnabled = narrationEnabled;
+                narrationEnabled = false;
+                lastPlayedSegment = -1;
+
+                const toggleBtn = document.getElementById('narrationToggle');
+                if (toggleBtn) toggleBtn.classList.add('preview-active');
+
+                // Helper to restore narration setting
+                const restoreNarration = () => {
+                    narrationEnabled = wasNarrationEnabled;
+                    if (toggleBtn) toggleBtn.classList.remove('preview-active');
+                    lastPlayedSegment = -1;
+                };
+
+                // Helper to reset everything when done
+                const resetPreviewUI = () => {
+                    if (previewBtn) {
+                        previewBtn.textContent = originalBtnText;
+                        previewBtn.classList.remove('loading');
+                    }
+                    if (segmentCard) segmentCard.classList.remove('previewing');
+                    document.querySelectorAll('.preview-btn, .segment-action-btn').forEach(btn => {
+                        btn.disabled = false;
+                    });
+                };
+
+                // Set up audio event handlers
+                currentPreviewAudio.onended = () => {
+                    videoPlayer.pause();
+                    restoreNarration();
+                    setStatus(`✓ Segment ${idx + 1} preview complete`, 'saved');
+                    if (needsCleanup) URL.revokeObjectURL(audioUrl);
+                    currentPreviewAudio = null;
+                    isPreviewLoading = false;
+                    activePreviewSegment = -1;
+                    isPreviewPaused = false;
+                    resetPreviewUI();
+                };
+
+                currentPreviewAudio.onerror = () => {
+                    videoPlayer.pause();
+                    restoreNarration();
+                    setStatus('✗ Audio playback error', '');
+                    currentPreviewAudio = null;
+                    isPreviewLoading = false;
+                    activePreviewSegment = -1;
+                    isPreviewPaused = false;
+                    resetPreviewUI();
+                };
+
+                // Update button to show playing state (can pause)
+                if (previewBtn) {
+                    previewBtn.textContent = '⏸ Pause';
+                    previewBtn.classList.remove('loading');
+                }
+                setStatus(`▶ Playing segment ${idx + 1} with video...`, 'saved');
+
+                // Mark this segment as actively previewing
+                activePreviewSegment = idx;
+                isPreviewPaused = false;
+
+                // Play both video and audio together
+                await Promise.all([
+                    currentPreviewAudio.play(),
+                    videoPlayer.play()
+                ]);
+            } catch (error) {
+                setStatus(`✗ Preview failed: ${error.message || 'Unknown error'}`, '');
+                console.error('Preview error:', error);
+                isPreviewLoading = false;
+                activePreviewSegment = -1;
+                isPreviewPaused = false;
+                // Restore narration if it was disabled
+                narrationEnabled = true;
+
+                // Reset button and segment card
+                if (previewBtn) {
+                    previewBtn.textContent = originalBtnText;
+                    previewBtn.classList.remove('loading');
+                }
+                if (segmentCard) segmentCard.classList.remove('previewing');
+            } finally {
+                // Re-enable preview buttons
+                document.querySelectorAll('.preview-btn, .segment-action-btn').forEach(btn => {
+                    btn.disabled = false;
+                });
+            }
+        }
+
+        // Preload audio for a segment from its saved audio file
+        async function preloadSegmentAudio(idx) {
+            const seg = segments[idx];
+            if (!seg.audio_path || segmentAudioCache[idx]) return;
+
+            try {
+                const filename = seg.audio_path.split('/').pop();
+                const audioUrl = `/projects-files/${projectId}/audio/${filename}`;
+                const audio = new Audio(audioUrl);
+
+                // Wait for it to be loadable
+                await new Promise((resolve, reject) => {
+                    audio.oncanplaythrough = resolve;
+                    audio.onerror = reject;
+                    audio.load();
+                });
+
+                segmentAudioCache[idx] = audio;
+                console.log(`Preloaded audio for segment ${idx}`);
+            } catch (error) {
+                console.warn(`Failed to preload audio for segment ${idx}:`, error);
+            }
+        }
+
+        // Preload all segment audio files
+        async function preloadAllAudio() {
+            const promises = segments.map((_, idx) => preloadSegmentAudio(idx));
+            await Promise.allSettled(promises);
+            console.log('Audio preload complete');
+        }
+
+        // Play narration for current segment (with queue to prevent cutoff)
+        function playSegmentNarration(idx) {
+            if (!narrationEnabled) return;
+
+            // Check if this segment is already in queue or playing
+            if (idx === lastPlayedSegment) return;
+            if (audioQueue.includes(idx)) return; // Already queued
+
+            // Check if audio is outdated (text was edited)
+            if (segmentAudioDirty[idx]) {
+                console.log(`Segment ${idx} audio is outdated, skipping playback`);
+                return;
+            }
+
+            // Check if audio is cached
+            if (!segmentAudioCache[idx]) {
+                console.log(`Segment ${idx} audio not cached`);
+                return;
+            }
+
+            // If audio is currently playing, queue this segment instead of cutting off
+            if (isNarrationPlaying && currentNarrationAudio) {
+                // Add to queue (but keep queue small - only next segment matters)
+                audioQueue = [idx]; // Replace queue with just the latest requested segment
+                console.log(`Queued segment ${idx + 1} (current audio still playing)`);
+                return;
+            }
+
+            // Play immediately
+            playNarrationNow(idx);
+        }
+
+        // Actually play the narration for a segment
+        function playNarrationNow(idx) {
+            // Safety check
+            if (!segmentAudioCache[idx]) {
+                processAudioQueue();
+                return;
+            }
+
+            lastPlayedSegment = idx;
+            isNarrationPlaying = true;
+            currentNarrationAudio = segmentAudioCache[idx].cloneNode();
+
+            // When audio ends, check queue for next segment
+            currentNarrationAudio.onended = () => {
+                isNarrationPlaying = false;
+                currentNarrationAudio = null;
+                processAudioQueue();
+            };
+
+            currentNarrationAudio.onerror = () => {
+                isNarrationPlaying = false;
+                currentNarrationAudio = null;
+                processAudioQueue();
+            };
+
+            currentNarrationAudio.play().catch(e => {
+                console.warn('Narration play failed:', e);
+                isNarrationPlaying = false;
+                processAudioQueue();
+            });
+        }
+
+        // Process the audio queue - play next segment if available
+        function processAudioQueue() {
+            if (!narrationEnabled || !isPlaying) {
+                audioQueue = [];
+                return;
+            }
+
+            if (audioQueue.length > 0) {
+                const nextIdx = audioQueue.shift();
+                console.log(`Playing queued segment ${nextIdx + 1}`);
+                playNarrationNow(nextIdx);
+            }
+        }
+
+        // Stop narration when video pauses
+        function stopNarration() {
+            if (currentNarrationAudio) {
+                currentNarrationAudio.pause();
+                currentNarrationAudio.currentTime = 0;
+                currentNarrationAudio = null;
+            }
+            audioQueue = [];  // Clear the queue
+            isNarrationPlaying = false;
+            lastPlayedSegment = -1;
+        }
+
+        async function regenerateSegment(idx) {
+            setStatus('Regenerating audio...', 'saving');
+
+            try {
+                const response = await fetch(`/api/editor/${projectId}/segments/${idx}/regenerate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ voice: voiceSelect.value })
+                });
+
+                if (response.ok) {
+                    setStatus('Audio regenerated', 'saved');
+                } else {
+                    throw new Error('Regeneration failed');
+                }
+            } catch (error) {
+                setStatus('Regeneration failed', '');
+                console.error('Regenerate error:', error);
+            }
+        }
+
+        // Video player events
+        videoPlayer.addEventListener('timeupdate', () => {
+            const current = videoPlayer.currentTime;
+            const duration = videoPlayer.duration || 0;
+
+            timeDisplay.textContent = `${formatTime(current)} / ${formatTime(duration)}`;
+
+            // Update playhead
+            if (duration > 0) {
+                const percent = (current / duration) * 100;
+                playhead.style.left = percent + '%';
+            }
+
+            // Update current segment
+            const segIdx = segments.findIndex(s => current >= s.start_time && current < s.end_time);
+            if (segIdx !== -1 && segIdx !== currentSegmentIndex) {
+                currentSegmentIndex = segIdx;
+                document.querySelectorAll('.segment-card').forEach((el, i) => {
+                    el.classList.toggle('active', i === segIdx);
+                });
+                document.querySelectorAll('.timeline-segment').forEach((el, i) => {
+                    el.classList.toggle('active', i === segIdx);
+                });
+
+                // Play narration for new segment if video is playing
+                if (isPlaying && narrationEnabled) {
+                    playSegmentNarration(segIdx);
+                }
+            }
+        });
+
+        videoPlayer.addEventListener('play', () => {
+            playBtn.textContent = '⏸';
+            isPlaying = true;
+
+            // If a preview was paused, resume it
+            if (activePreviewSegment >= 0 && currentPreviewAudio && isPreviewPaused) {
+                currentPreviewAudio.play();
+                isPreviewPaused = false;
+                const previewBtn = document.querySelector(`#segment-${activePreviewSegment} .preview-btn`);
+                if (previewBtn) previewBtn.textContent = '⏸ Pause';
+                setStatus(`▶ Resuming preview...`, 'saved');
+                return; // Don't start regular narration
+            }
+
+            // Clear any stale queue state
+            audioQueue = [];
+            lastPlayedSegment = -1;
+
+            // Start narration for current segment (only if no active preview)
+            if (activePreviewSegment < 0 && narrationEnabled && currentSegmentIndex >= 0) {
+                playSegmentNarration(currentSegmentIndex);
+            }
+        });
+
+        videoPlayer.addEventListener('pause', () => {
+            playBtn.textContent = '▶';
+            isPlaying = false;
+            stopNarration();
+
+            // If a preview is active, pause its audio too and update button
+            if (activePreviewSegment >= 0 && currentPreviewAudio && !isPreviewPaused) {
+                currentPreviewAudio.pause();
+                isPreviewPaused = true;
+                const previewBtn = document.querySelector(`#segment-${activePreviewSegment} .preview-btn`);
+                if (previewBtn) previewBtn.textContent = '▶ Resume';
+                setStatus(`⏸ Preview paused`, 'saved');
+            }
+        });
+
+        videoPlayer.addEventListener('seeked', () => {
+            // Reset narration tracking when user seeks
+            lastPlayedSegment = -1;
+            if (isPlaying && narrationEnabled) {
+                const segIdx = segments.findIndex(s =>
+                    videoPlayer.currentTime >= s.start_time && videoPlayer.currentTime < s.end_time
+                );
+                if (segIdx !== -1) {
+                    playSegmentNarration(segIdx);
+                }
+            }
+        });
+
+        playBtn.onclick = () => {
+            if (isPlaying) {
+                videoPlayer.pause();
+            } else {
+                videoPlayer.play();
+            }
+        };
+
+        // Narration toggle
+        document.getElementById('narrationToggle').onclick = () => {
+            narrationEnabled = !narrationEnabled;
+            const btn = document.getElementById('narrationToggle');
+            btn.classList.toggle('active', narrationEnabled);
+            btn.textContent = narrationEnabled ? '🔊 Narration' : '🔇 Narration';
+
+            if (!narrationEnabled) {
+                stopNarration();
+            } else if (isPlaying) {
+                // Start narration if video is playing
+                playSegmentNarration(currentSegmentIndex);
+            }
+
+            setStatus(narrationEnabled ? 'Narration enabled' : 'Narration disabled', 'saved');
+        };
+
+        // Frame navigation
+        document.getElementById('prevFrameBtn').onclick = () => {
+            videoPlayer.currentTime = Math.max(0, videoPlayer.currentTime - 1);
+        };
+
+        document.getElementById('nextFrameBtn').onclick = () => {
+            videoPlayer.currentTime = Math.min(videoPlayer.duration, videoPlayer.currentTime + 1);
+        };
+
+        document.getElementById('prevSegBtn').onclick = () => {
+            if (currentSegmentIndex > 0) {
+                jumpToSegment(currentSegmentIndex - 1);
+            }
+        };
+
+        document.getElementById('nextSegBtn').onclick = () => {
+            if (currentSegmentIndex < segments.length - 1) {
+                jumpToSegment(currentSegmentIndex + 1);
+            }
+        };
+
+        // Voice change
+        voiceSelect.onchange = async () => {
+            setStatus('Updating voice for all segments...', 'saving');
+            try {
+                await fetch(`/api/editor/${projectId}/voice`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ voice: voiceSelect.value })
+                });
+
+                // Mark all segments as needing new audio (voice changed)
+                segments.forEach((_, idx) => {
+                    markAudioOutdated(idx);
+                });
+
+                // Clear audio cache (old voice)
+                segmentAudioCache = {};
+
+                // Mark as having changes that need re-rendering
+                markHasChanges();
+
+                setStatus(`Voice changed to ${voiceSelect.options[voiceSelect.selectedIndex].text} - Click Render to apply`, 'saved');
+            } catch (error) {
+                setStatus('Voice update failed', '');
+            }
+        };
+
+        // Render button
+        document.getElementById('renderBtn').onclick = () => {
+            renderModal.classList.remove('hidden');
+        };
+
+        document.getElementById('cancelRenderBtn').onclick = () => {
+            renderModal.classList.add('hidden');
+        };
+
+        document.getElementById('confirmRenderBtn').onclick = async () => {
+            renderModal.classList.add('hidden');
+
+            // Log speed adjustments for debugging
+            console.log('Speed adjustments being sent:', segmentSpeedAdjust);
+            if (Object.keys(segmentSpeedAdjust).length > 0) {
+                const adjustedSegs = Object.entries(segmentSpeedAdjust)
+                    .map(([idx, speed]) => `Seg ${parseInt(idx)+1}: ${Math.round((1-speed)*100)}% slower`)
+                    .join(', ');
+                showLoading(`Applying speed adjustments (${adjustedSegs})...`);
+            } else {
+                showLoading('Regenerating audio for all segments...');
+            }
+
+            try {
+                const response = await fetch(`/api/editor/${projectId}/render`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        voice: voiceSelect.value,
+                        speed_adjustments: segmentSpeedAdjust
+                    })
+                });
+
+                if (response.ok) {
+                    // Poll for completion
+                    let attempts = 0;
+                    const maxAttempts = 120; // 2 minutes max
+
+                    const checkStatus = async () => {
+                        attempts++;
+                        const statusRes = await fetch(`/projects/${projectId}`);
+                        const status = await statusRes.json();
+
+                        if (status.current_step === 'completed' && status.output_ready) {
+                            hideLoading();
+
+                            // Update state - changes are now in the video
+                            outputReady = true;
+                            clearChanges();
+
+                            // Update original narrations to current (changes are now "saved")
+                            segments.forEach((seg, idx) => {
+                                const textarea = document.getElementById(`narration-${idx}`);
+                                if (textarea) {
+                                    originalNarrations[idx] = textarea.value;
+                                }
+                                markAudioSynced(idx);
+                            });
+
+                            // Update download button state
+                            updateDownloadButton();
+
+                            // Reload audio cache for updated files
+                            segmentAudioCache = {};
+                            preloadAllAudio();
+
+                            setStatus('Video rendered! Click Download to save your video.', 'saved');
+
+                            // Auto-start download
+                            if (confirm('Video rendered successfully! Download now?')) {
+                                window.location.href = `/projects/${projectId}/download?t=${Date.now()}`;
+                            }
+                            return;
+                        } else if (status.current_step === 'failed') {
+                            hideLoading();
+                            alert('Render failed: ' + (status.error || 'Unknown error'));
+                            return;
+                        } else if (attempts >= maxAttempts) {
+                            hideLoading();
+                            alert('Render is taking too long. Check back later.');
+                            return;
+                        }
+
+                        // Update loading message based on step with more detail
+                        const stepMessages = {
+                            'synthesizing_audio': `Generating voiceover audio (${segments.length} segments, parallel)...`,
+                            'rendering': 'Rendering final video (merging audio + video)...',
+                            'combining_audio': 'Combining audio segments...'
+                        };
+                        const stepTimes = {
+                            'synthesizing_audio': `~${Math.ceil(segments.length / 5) * 2}s`,
+                            'rendering': '~10-20s'
+                        };
+                        const timeHint = stepTimes[status.current_step] || '';
+                        loadingText.textContent = (stepMessages[status.current_step] || 'Processing...') + (timeHint ? ` (${timeHint})` : '');
+
+                        setTimeout(checkStatus, 1000);
+                    };
+
+                    setTimeout(checkStatus, 1000);
+                } else {
+                    throw new Error('Render request failed');
+                }
+            } catch (error) {
+                hideLoading();
+                alert('Render failed: ' + error.message);
+            }
+        };
+
+        // Preview All - plays video with all narrations sequentially
+        let isPreviewingAll = false;
+        let previewAllAudioQueue = [];
+        let currentPreviewAllIndex = 0;
+
+        document.getElementById('previewAllBtn').onclick = async () => {
+            if (isPreviewingAll) {
+                // Stop preview
+                stopPreviewAll();
+                return;
+            }
+
+            const previewBtn = document.getElementById('previewAllBtn');
+            previewBtn.textContent = '⏹ Stop Preview';
+            isPreviewingAll = true;
+
+            // Stop any existing audio
+            stopAllAudio();
+
+            // Start video from beginning
+            videoPlayer.currentTime = 0;
+            currentSegmentIndex = 0;
+
+            setStatus('Generating preview audio for all segments...', 'saving');
+
+            // Generate audio for all segments that have text
+            previewAllAudioQueue = [];
+            currentPreviewAllIndex = 0;
+
+            for (let i = 0; i < segments.length; i++) {
+                const seg = segments[i];
+                const text = document.getElementById(`narration-${i}`)?.value || seg.narration;
+
+                if (text && text.trim()) {
+                    try {
+                        const response = await fetch(`/api/editor/preview-audio`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                text: text,
+                                voice: voiceSelect.value
+                            })
+                        });
+
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            const audioUrl = URL.createObjectURL(blob);
+                            previewAllAudioQueue.push({
+                                index: i,
+                                audio: new Audio(audioUrl),
+                                url: audioUrl,
+                                startTime: seg.start_time
+                            });
+                        }
+                    } catch (error) {
+                        console.error(`Failed to generate audio for segment ${i}:`, error);
+                    }
+                }
+
+                if (!isPreviewingAll) break; // User stopped
+            }
+
+            if (!isPreviewingAll || previewAllAudioQueue.length === 0) {
+                stopPreviewAll();
+                return;
+            }
+
+            setStatus('Playing full preview...', 'saved');
+
+            // Start video and play first audio
+            videoPlayer.play();
+            playNextPreviewAudio();
+        };
+
+        function playNextPreviewAudio() {
+            if (!isPreviewingAll || currentPreviewAllIndex >= previewAllAudioQueue.length) {
+                // Done with all segments
+                stopPreviewAll();
+                setStatus('Preview complete', 'saved');
+                return;
+            }
+
+            const item = previewAllAudioQueue[currentPreviewAllIndex];
+            const audio = item.audio;
+
+            // Update UI to show current segment
+            currentSegmentIndex = item.index;
+            document.querySelectorAll('.segment-card').forEach((el, i) => {
+                el.classList.toggle('active', i === item.index);
+            });
+            document.querySelectorAll('.timeline-segment').forEach((el, i) => {
+                el.classList.toggle('active', i === item.index);
+            });
+
+            // Jump video to segment start
+            videoPlayer.currentTime = item.startTime;
+
+            audio.onended = () => {
+                URL.revokeObjectURL(item.url);
+                currentPreviewAllIndex++;
+                // Small delay between segments for natural feel
+                setTimeout(() => playNextPreviewAudio(), 200);
+            };
+
+            audio.onerror = () => {
+                currentPreviewAllIndex++;
+                playNextPreviewAudio();
+            };
+
+            audio.play().catch(e => {
+                console.error('Audio play failed:', e);
+                currentPreviewAllIndex++;
+                playNextPreviewAudio();
+            });
+
+            currentNarrationAudio = audio;
+        }
+
+        function stopPreviewAll() {
+            isPreviewingAll = false;
+            const previewBtn = document.getElementById('previewAllBtn');
+            previewBtn.textContent = '▶ Preview All';
+
+            // Stop current audio
+            if (currentNarrationAudio) {
+                currentNarrationAudio.pause();
+                currentNarrationAudio = null;
+            }
+
+            // Cleanup remaining audio URLs
+            previewAllAudioQueue.forEach(item => {
+                if (item.url) URL.revokeObjectURL(item.url);
+            });
+            previewAllAudioQueue = [];
+
+            videoPlayer.pause();
+        }
+
+        // Regenerate all
+        document.getElementById('regenerateAllBtn').onclick = async () => {
+            if (!confirm('Regenerate narration for all segments? This will use AI to create new narration text.')) {
+                return;
+            }
+
+            showLoading('Regenerating all narrations...');
+
+            try {
+                const response = await fetch(`/api/editor/${projectId}/regenerate-all`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    // Reload project
+                    await init();
+                } else {
+                    throw new Error('Regeneration failed');
+                }
+            } catch (error) {
+                hideLoading();
+                alert('Regeneration failed: ' + error.message);
+            }
+        };
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'TEXTAREA') return;
+
+            switch(e.key) {
+                case ' ':
+                    e.preventDefault();
+                    playBtn.click();
+                    break;
+                case 'ArrowLeft':
+                    videoPlayer.currentTime -= e.shiftKey ? 5 : 1;
+                    break;
+                case 'ArrowRight':
+                    videoPlayer.currentTime += e.shiftKey ? 5 : 1;
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (currentSegmentIndex > 0) jumpToSegment(currentSegmentIndex - 1);
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (currentSegmentIndex < segments.length - 1) jumpToSegment(currentSegmentIndex + 1);
+                    break;
+            }
+        });
+
+        // Initialize
+        init();
+    </script>
+</body>
+</html>

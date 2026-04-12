@@ -1,0 +1,11 @@
+Analyze this video segment (segment {segment_id}, {start_time:.1f}s to {end_time:.1f}s, duration {duration:.1f}s).
+
+I'm showing you {num_frames} key frames from this segment. Describe what's happening:
+
+1. What is the user doing or what is being demonstrated?
+2. What UI elements, screens, or content are visible?
+3. What's the progression or flow across these frames?
+
+Be specific and descriptive but concise (3-5 sentences). Focus on what would be useful for narration.
+
+{context_line}

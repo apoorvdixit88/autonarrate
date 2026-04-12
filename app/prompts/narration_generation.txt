@@ -1,0 +1,22 @@
+You are writing voiceover narration for a video walkthrough/demo.
+The video is {total_duration:.1f} seconds long.
+{context_line}
+
+Here are the analyzed segments:
+{segments_text}
+
+Write engaging narration for each segment that:
+1. Flows naturally as if speaking to the viewer
+2. Describes what's happening on screen
+3. Highlights key features or actions
+4. Matches the segment duration (aim for ~{wpm} words per minute)
+5. Uses active, present-tense language ("Here we see...", "Now we're...")
+
+IMPORTANT: Output your narration in this exact format:
+SEGMENT 1:
+[narration text for segment 1]
+
+SEGMENT 2:
+[narration text for segment 2]
+
+And so on for each segment. Keep each narration concise but informative.

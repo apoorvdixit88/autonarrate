@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Narrated Video Tool</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 2rem;
+        }
+
+        .upload-area {
+            border: 2px dashed #333;
+            border-radius: 12px;
+            padding: 3rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 1.5rem;
+        }
+
+        .upload-area:hover, .upload-area.drag-over {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .upload-area.has-file {
+            border-color: #4ade80;
+            background: rgba(74, 222, 128, 0.1);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .upload-text {
+            color: #888;
+        }
+
+        .file-name {
+            color: #4ade80;
+            font-weight: 500;
+            margin-top: 0.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #aaa;
+            font-size: 0.9rem;
+        }
+
+        .context-input {
+            width: 100%;
+            padding: 1rem;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            font-size: 1rem;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .context-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .context-input::placeholder {
+            color: #666;
+        }
+
+        .voice-select {
+            width: 100%;
+            padding: 1rem;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+
+        .voice-select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .voice-select option {
+            background: #1a1a1a;
+            color: #e0e0e0;
+            padding: 0.5rem;
+        }
+
+        .voice-preview-btn {
+            margin-left: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: #333;
+            border: none;
+            border-radius: 6px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .voice-preview-btn:hover {
+            background: #444;
+        }
+
+        .voice-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .voice-row .voice-select {
+            flex: 1;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 100%;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-download {
+            background: #4ade80;
+            color: #0f0f0f;
+            margin-top: 1rem;
+        }
+
+        .btn-edit {
+            background: #667eea;
+            color: white;
+            margin-top: 0.5rem;
+            margin-left: 0.5rem;
+        }
+
+        .progress-section {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: #1a1a1a;
+            border-radius: 12px;
+            display: none;
+        }
+
+        .progress-section.visible {
+            display: block;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .project-id {
+            font-family: monospace;
+            color: #888;
+        }
+
+        .progress-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            background: #0f0f0f;
+        }
+
+        .step.active {
+            background: rgba(102, 126, 234, 0.2);
+        }
+
+        .step.completed {
+            background: rgba(74, 222, 128, 0.1);
+        }
+
+        .step.failed {
+            background: rgba(239, 68, 68, 0.2);
+        }
+
+        .step-indicator {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            background: #333;
+        }
+
+        .step.completed .step-indicator {
+            background: #4ade80;
+            color: #0f0f0f;
+        }
+
+        .step.active .step-indicator {
+            background: #667eea;
+            color: white;
+            animation: pulse 1.5s infinite;
+        }
+
+        .step.failed .step-indicator {
+            background: #ef4444;
+            color: white;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .step-name {
+            flex: 1;
+        }
+
+        .step-time {
+            font-size: 0.75rem;
+            color: #666;
+            font-family: monospace;
+        }
+
+        .step.active .step-time {
+            color: #667eea;
+        }
+
+        .time-estimate {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: #0f0f0f;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+        }
+
+        .time-elapsed {
+            color: #888;
+        }
+
+        .time-remaining {
+            color: #667eea;
+            font-weight: 500;
+        }
+
+        .error-message {
+            color: #ef4444;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: rgba(239, 68, 68, 0.1);
+            border-radius: 8px;
+        }
+
+        .download-section {
+            margin-top: 1.5rem;
+            text-align: center;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .optgroup-label {
+            font-weight: bold;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Auto-Narrated Video Tool</h1>
+        <p class="subtitle">Upload a video and get AI-generated voiceover narration</p>
+
+        <form id="uploadForm">
+            <div class="upload-area" id="dropZone">
+                <div class="upload-icon">📹</div>
+                <div class="upload-text">Drag & drop your video here or click to browse</div>
+                <div class="upload-text" style="font-size: 0.875rem; margin-top: 0.5rem;">
+                    Supports MP4, MOV, MKV, WebM, AVI
+                </div>
+                <div class="file-name" id="fileName"></div>
+            </div>
+            <input type="file" id="videoInput" accept=".mp4,.mov,.mkv,.webm,.avi">
+
+            <div class="form-group">
+                <label class="form-label">Voice</label>
+                <div class="voice-row">
+                    <select class="voice-select" id="voiceSelect">
+                        <optgroup label="Female Voices">
+                            <option value="en-GB-LibbyNeural" selected>Libby (British - Friendly) ★</option>
+                            <option value="en-GB-SoniaNeural">Sonia (British - Sophisticated)</option>
+                            <option value="en-US-EmmaNeural">Emma (US - Natural)</option>
+                            <option value="en-US-JennyNeural">Jenny (US - Professional)</option>
+                            <option value="en-US-AriaNeural">Aria (US - Mature)</option>
+                        </optgroup>
+                        <optgroup label="Male Voices">
+                            <option value="en-US-GuyNeural">Guy (US - Professional)</option>
+                            <option value="en-GB-RyanNeural">Ryan (British - Clear)</option>
+                            <option value="en-US-ChristopherNeural">Christopher (US - Deep)</option>
+                        </optgroup>
+                    </select>
+                    <button type="button" class="voice-preview-btn" id="previewVoiceBtn">▶ Preview</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Context (Optional)</label>
+                <textarea
+                    class="context-input"
+                    id="contextInput"
+                    placeholder="Describe what this video is about to help generate better narration..."
+                ></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary" id="submitBtn" disabled>
+                Generate Narration
+            </button>
+        </form>
+
+        <div class="progress-section" id="progressSection">
+            <div class="progress-header">
+                <h3>Processing</h3>
+                <span class="project-id" id="projectId"></span>
+            </div>
+
+            <div class="progress-steps" id="progressSteps">
+                <div class="step" data-step="ingesting" data-estimate="5">
+                    <div class="step-indicator">1</div>
+                    <span class="step-name">Ingesting video</span>
+                    <span class="step-time"></span>
+                </div>
+                <div class="step" data-step="segmenting" data-estimate="10">
+                    <div class="step-indicator">2</div>
+                    <span class="step-name">Detecting scenes</span>
+                    <span class="step-time"></span>
+                </div>
+                <div class="step" data-step="extracting_frames" data-estimate="15">
+                    <div class="step-indicator">3</div>
+                    <span class="step-name">Extracting frames</span>
+                    <span class="step-time"></span>
+                </div>
+                <div class="step" data-step="analyzing_frames" data-estimate="120">
+                    <div class="step-indicator">4</div>
+                    <span class="step-name">Analyzing with AI</span>
+                    <span class="step-time"></span>
+                </div>
+                <div class="step" data-step="generating_script" data-estimate="30">
+                    <div class="step-indicator">5</div>
+                    <span class="step-name">Writing narration</span>
+                    <span class="step-time"></span>
+                </div>
+                <div class="step" data-step="synthesizing_audio" data-estimate="45">
+                    <div class="step-indicator">6</div>
+                    <span class="step-name">Generating voiceover</span>
+                    <span class="step-time"></span>
+                </div>
+                <div class="step" data-step="rendering" data-estimate="10">
+                    <div class="step-indicator">7</div>
+                    <span class="step-name">Rendering video</span>
+                    <span class="step-time"></span>
+                </div>
+            </div>
+
+            <div class="time-estimate" id="timeEstimate" style="display: none;">
+                <span class="time-elapsed">Elapsed: <span id="elapsedTime">0:00</span></span>
+                <span class="time-remaining">Est. remaining: <span id="remainingTime">--:--</span></span>
+            </div>
+
+            <div class="error-message hidden" id="errorMessage"></div>
+
+            <div class="download-section hidden" id="downloadSection">
+                <p style="margin-bottom: 1rem; color: #4ade80;">✓ Video ready!</p>
+                <button class="btn btn-download" id="downloadBtn">
+                    Download Narrated Video
+                </button>
+                <button class="btn btn-edit" id="editBtn">
+                    Edit Narration
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const videoInput = document.getElementById('videoInput');
+        const fileName = document.getElementById('fileName');
+        const voiceSelect = document.getElementById('voiceSelect');
+        const previewVoiceBtn = document.getElementById('previewVoiceBtn');
+        const contextInput = document.getElementById('contextInput');
+        const submitBtn = document.getElementById('submitBtn');
+        const uploadForm = document.getElementById('uploadForm');
+        const progressSection = document.getElementById('progressSection');
+        const projectIdSpan = document.getElementById('projectId');
+        const progressSteps = document.getElementById('progressSteps');
+        const errorMessage = document.getElementById('errorMessage');
+        const downloadSection = document.getElementById('downloadSection');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const editBtn = document.getElementById('editBtn');
+
+        let selectedFile = null;
+        let currentProjectId = null;
+        let pollInterval = null;
+        let timerInterval = null;
+        let startTime = null;
+        let stepStartTime = null;
+        let currentStep = null;
+
+        // Step order for progress tracking
+        const stepOrder = [
+            'pending', 'ingesting', 'segmenting', 'extracting_frames',
+            'analyzing_frames', 'generating_script', 'synthesizing_audio',
+            'rendering', 'completed'
+        ];
+
+        // Estimated time per step in seconds
+        // These are base estimates, adjusted dynamically based on actual performance
+        const stepEstimates = {
+            'ingesting': 5,
+            'segmenting': 15,
+            'extracting_frames': 20,
+            'analyzing_frames': 180,  // ~15-20s per segment, starts high
+            'generating_script': 45,
+            'synthesizing_audio': 60, // ~4s per segment
+            'rendering': 15
+        };
+
+        // Track actual step times to improve estimates
+        const actualStepTimes = {};
+        let videoDuration = 0;
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function updateTimer() {
+            if (!startTime) return;
+
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            document.getElementById('elapsedTime').textContent = formatTime(elapsed);
+
+            // Update current step time
+            if (stepStartTime && currentStep) {
+                const stepEl = document.querySelector(`[data-step="${currentStep}"] .step-time`);
+                if (stepEl) {
+                    const stepElapsed = Math.floor((Date.now() - stepStartTime) / 1000);
+                    stepEl.textContent = formatTime(stepElapsed);
+                }
+            }
+        }
+
+        function calculateRemainingTime(currentStepName, segmentCount) {
+            const currentIdx = stepOrder.indexOf(currentStepName);
+            if (currentIdx < 0) return 0;
+
+            let remaining = 0;
+            for (let i = currentIdx; i < stepOrder.length - 1; i++) {
+                const step = stepOrder[i];
+                if (step === 'completed' || step === 'pending') continue;
+
+                // Use actual time if we have it from a previous run of same step type
+                let estimate = actualStepTimes[step] || stepEstimates[step] || 10;
+
+                // Adjust based on segment count for segment-dependent steps
+                if (segmentCount > 0) {
+                    if (step === 'ingesting') {
+                        estimate = 5; // Copy and metadata extraction
+                    } else if (step === 'segmenting') {
+                        estimate = 10; // Scene detection
+                    } else if (step === 'extracting_frames') {
+                        estimate = segmentCount * 1; // ~1s per segment (2 frames each now)
+                    } else if (step === 'analyzing_frames') {
+                        // Parallel processing with 3 concurrent calls
+                        // Each call ~20s, but 3 at a time
+                        estimate = Math.ceil(segmentCount / 3) * 20;
+                    } else if (step === 'generating_script') {
+                        estimate = 15; // Single Claude call for all narration
+                    } else if (step === 'synthesizing_audio') {
+                        estimate = segmentCount * 2; // ~2s per segment (Edge TTS is fast)
+                    } else if (step === 'rendering') {
+                        estimate = 20; // FFmpeg rendering
+                    }
+                }
+
+                // For current step, subtract elapsed time
+                if (i === currentIdx && stepStartTime) {
+                    const stepElapsed = (Date.now() - stepStartTime) / 1000;
+                    estimate = Math.max(0, estimate - stepElapsed);
+                }
+
+                remaining += estimate;
+            }
+            return Math.ceil(remaining);
+        }
+
+        function getStepDisplayName(step) {
+            const names = {
+                'ingesting': 'Ingesting video',
+                'segmenting': 'Detecting scenes',
+                'extracting_frames': 'Extracting frames',
+                'analyzing_frames': 'Analyzing with AI',
+                'generating_script': 'Writing narration',
+                'synthesizing_audio': 'Generating voiceover',
+                'rendering': 'Rendering video'
+            };
+            return names[step] || step;
+        }
+
+        // Voice preview
+        previewVoiceBtn.addEventListener('click', async () => {
+            const voice = voiceSelect.value;
+            previewVoiceBtn.textContent = '...';
+            previewVoiceBtn.disabled = true;
+
+            try {
+                const response = await fetch(`/voices/preview?voice=${voice}`);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const audio = new Audio(URL.createObjectURL(blob));
+                    audio.play();
+                }
+            } catch (error) {
+                console.error('Preview error:', error);
+            } finally {
+                previewVoiceBtn.textContent = '▶ Preview';
+                previewVoiceBtn.disabled = false;
+            }
+        });
+
+        // Drag and drop handlers
+        dropZone.addEventListener('click', () => videoInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect(files[0]);
+            }
+        });
+
+        videoInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            const validTypes = ['.mp4', '.mov', '.mkv', '.webm', '.avi'];
+            const ext = '.' + file.name.split('.').pop().toLowerCase();
+
+            if (!validTypes.includes(ext)) {
+                alert('Please select a valid video file (MP4, MOV, MKV, WebM, AVI)');
+                return;
+            }
+
+            selectedFile = file;
+            fileName.textContent = file.name;
+            dropZone.classList.add('has-file');
+            submitBtn.disabled = false;
+        }
+
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!selectedFile) return;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Uploading...';
+
+            const formData = new FormData();
+            formData.append('video', selectedFile);
+            formData.append('voice', voiceSelect.value);
+
+            const context = contextInput.value.trim();
+            if (context) {
+                formData.append('context', context);
+            }
+
+            try {
+                const response = await fetch('/projects/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('Upload failed');
+                }
+
+                const data = await response.json();
+                currentProjectId = data.project_id;
+
+                // Show progress section
+                progressSection.classList.add('visible');
+                projectIdSpan.textContent = `ID: ${currentProjectId}`;
+
+                // Start polling
+                startPolling();
+
+            } catch (error) {
+                alert('Error: ' + error.message);
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Generate Narration';
+            }
+        });
+
+        function startPolling() {
+            if (pollInterval) clearInterval(pollInterval);
+            if (timerInterval) clearInterval(timerInterval);
+
+            // Start timing
+            startTime = Date.now();
+            stepStartTime = Date.now();
+            currentStep = 'ingesting';
+
+            // Show time estimate
+            document.getElementById('timeEstimate').style.display = 'flex';
+
+            // Start timer update every second
+            timerInterval = setInterval(updateTimer, 1000);
+
+            pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/projects/${currentProjectId}`);
+                    const data = await response.json();
+
+                    updateProgress(data);
+
+                    if (data.current_step === 'completed' || data.current_step === 'failed') {
+                        clearInterval(pollInterval);
+                        clearInterval(timerInterval);
+                        pollInterval = null;
+                        timerInterval = null;
+                    }
+                } catch (error) {
+                    console.error('Polling error:', error);
+                }
+            }, 2000);
+        }
+
+        function updateProgress(data) {
+            const currentStepIndex = stepOrder.indexOf(data.current_step);
+
+            // Track step changes for timing
+            if (data.current_step !== currentStep && data.current_step !== 'completed' && data.current_step !== 'failed') {
+                // Record actual time for previous step
+                if (currentStep && stepStartTime) {
+                    const elapsed = Math.floor((Date.now() - stepStartTime) / 1000);
+                    actualStepTimes[currentStep] = elapsed;
+
+                    const prevStepEl = document.querySelector(`[data-step="${currentStep}"] .step-time`);
+                    if (prevStepEl) {
+                        prevStepEl.textContent = formatTime(elapsed);
+                    }
+                }
+                currentStep = data.current_step;
+                stepStartTime = Date.now();
+
+                // Update step name to show it's active
+                const activeStepEl = document.querySelector(`[data-step="${currentStep}"] .step-name`);
+                if (activeStepEl) {
+                    activeStepEl.textContent = getStepDisplayName(currentStep) + '...';
+                }
+            }
+
+            // Update step indicators
+            document.querySelectorAll('.step').forEach(stepEl => {
+                const stepName = stepEl.dataset.step;
+                const stepIndex = stepOrder.indexOf(stepName);
+
+                stepEl.classList.remove('active', 'completed', 'failed');
+
+                if (data.current_step === 'failed' && stepIndex === currentStepIndex) {
+                    stepEl.classList.add('failed');
+                } else if (stepIndex < currentStepIndex) {
+                    stepEl.classList.add('completed');
+                    // Show completed text without ellipsis
+                    const nameEl = stepEl.querySelector('.step-name');
+                    if (nameEl) nameEl.textContent = getStepDisplayName(stepName);
+                } else if (stepIndex === currentStepIndex) {
+                    stepEl.classList.add('active');
+                }
+            });
+
+            // Update remaining time estimate using actual segment count
+            const segmentCount = data.segment_count || 0;
+            const remaining = calculateRemainingTime(data.current_step, segmentCount > 0 ? segmentCount : 10);
+
+            // Show segment count once known
+            if (segmentCount > 0) {
+                const segInfo = document.getElementById('remainingTime');
+                if (segInfo && data.current_step !== 'completed') {
+                    document.getElementById('remainingTime').textContent =
+                        `~${formatTime(remaining)} (${segmentCount} segments)`;
+                }
+            } else {
+                document.getElementById('remainingTime').textContent = remaining > 0 ? `~${formatTime(remaining)}` : '--:--';
+            }
+
+            // Handle completion
+            if (data.current_step === 'completed' && data.output_ready) {
+                downloadSection.classList.remove('hidden');
+                submitBtn.textContent = 'Generate Another';
+                submitBtn.disabled = false;
+
+                const totalTime = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+                document.getElementById('remainingTime').textContent = `Done in ${formatTime(totalTime)}!`;
+
+                // Mark final step time
+                if (currentStep && stepStartTime) {
+                    const elapsed = Math.floor((Date.now() - stepStartTime) / 1000);
+                    const prevStepEl = document.querySelector(`[data-step="${currentStep}"] .step-time`);
+                    if (prevStepEl) prevStepEl.textContent = formatTime(elapsed);
+                }
+            }
+
+            // Handle errors
+            if (data.error) {
+                errorMessage.textContent = data.error;
+                errorMessage.classList.remove('hidden');
+                submitBtn.textContent = 'Try Again';
+                submitBtn.disabled = false;
+                document.getElementById('remainingTime').textContent = 'Failed';
+            } else {
+                errorMessage.classList.add('hidden');
+            }
+        }
+
+        downloadBtn.addEventListener('click', () => {
+            if (currentProjectId) {
+                window.location.href = `/projects/${currentProjectId}/download`;
+            }
+        });
+
+        editBtn.addEventListener('click', () => {
+            if (currentProjectId) {
+                window.location.href = `/editor/${currentProjectId}`;
+            }
+        });
+    </script>
+</body>
+</html>
