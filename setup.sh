@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Auto-Narrated Video Tool - Setup Script
+# AutoNarrate - Setup Script
 # This script sets up the development environment
 
 set -e  # Exit on error
 
 echo "=========================================="
-echo "  Auto-Narrated Video Tool - Setup"
+echo "        AutoNarrate - Setup"
 echo "=========================================="
 echo ""
 

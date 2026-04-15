@@ -1,4 +1,4 @@
-# Auto-Narrated Video Tool
+# AutoNarrate
 
 Transform any screen recording or product demo into an engaging, professionally narrated video - automatically.
 
@@ -26,8 +26,8 @@ Transform any screen recording or product demo into an engaging, professionally 
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/auto-narrated-video.git
-cd auto-narrated-video
+git clone https://github.com/yourusername/autonarrate.git
+cd autonarrate
 
 # Run setup script
 chmod +x setup.sh
@@ -184,7 +184,7 @@ This ensures narration is never cut off mid-sentence.
 ## Project Structure
 
 ```
-auto-narrated-video/
+autonarrate/
 ├── app/
 │   ├── main.py              # FastAPI application
 │   ├── config.py            # Configuration settings
