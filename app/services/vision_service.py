@@ -528,6 +528,12 @@ async def analyze_segments(state: ProjectState, max_concurrent: int = 3) -> Proj
     # Create semaphore to limit concurrent API calls
     semaphore = asyncio.Semaphore(max_concurrent)
 
+    # Config errors that should fail immediately (no retry)
+    config_errors = ["401", "403", "Unauthorized", "Forbidden", "Invalid API", "API key", "not found", "No such file"]
+
+    def is_config_error(error_msg: str) -> bool:
+        return any(err.lower() in error_msg.lower() for err in config_errors)
+
     async def analyze_one(segment, max_retries: int = 2):
         async with semaphore:
             logger.info(f"Analyzing segment {segment.segment_id + 1}/{len(state.segments)}")
@@ -545,7 +551,12 @@ async def analyze_segments(state: ProjectState, max_concurrent: int = 3) -> Proj
                 if not description.startswith("[Analysis failed"):
                     return segment.model_copy(update={"description": description})
 
-                # Retry if failed
+                # Config error - fail immediately, no retry
+                if is_config_error(description):
+                    logger.error(f"Configuration error detected: {description}")
+                    raise RuntimeError(f"Vision backend misconfigured: {description}")
+
+                # Transient error - retry
                 if attempt < max_retries - 1:
                     logger.warning(f"Segment {segment.segment_id + 1} failed, retrying ({attempt + 2}/{max_retries})...")
                     await asyncio.sleep(2)  # Brief pause before retry
