@@ -549,8 +549,12 @@ async def analyze_segments(state: ProjectState, max_concurrent: int = 3) -> Proj
     # Check for failed analyses - don't continue if vision failed
     failed_segments = [s for s in updated_segments if s.description.startswith("[Analysis failed")]
     if failed_segments:
-        error_msg = f"Vision analysis failed for {len(failed_segments)} segment(s): {failed_segments[0].description}"
+        failed_ids = [s.segment_id + 1 for s in failed_segments]
+        first_error = failed_segments[0].description
+        error_msg = f"Vision analysis failed using '{settings.vision_backend}' backend. " \
+                    f"Failed segments: {failed_ids}. Error: {first_error}"
         logger.error(error_msg)
+        logger.error(f"Please check your {settings.vision_backend} configuration in .env")
         raise RuntimeError(error_msg)
 
     state = state.model_copy(update={"segments": updated_segments})
