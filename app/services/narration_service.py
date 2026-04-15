@@ -138,7 +138,8 @@ CRITICAL REQUIREMENTS:
 5. PLAIN TEXT ONLY:
    - NO markdown formatting (no **bold**, *italic*, # headers, etc.)
    - This text will be spoken by a voice synthesizer
-   - Use punctuation for pacing: commas for short pauses, periods for longer pauses
+   - Write flowing sentences, avoid too many short choppy sentences
+   - Use commas naturally, don't overuse periods - keep it conversational
    - Write as natural speech, not formatted text
 
 EXAMPLE OF GOOD SUBSTANTIAL NARRATION:
