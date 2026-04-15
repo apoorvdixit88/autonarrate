@@ -20,13 +20,30 @@ Transform any screen recording or product demo into an engaging, professionally 
 - **Edit & Customize** - Modify narration text, regenerate specific segments
 - **No Audio Cutoff** - Narration always plays completely, video adapts
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/upload.png" width="700" alt="Upload Page">
+  <br><em>Upload your video and select a voice</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/processing.png" width="700" alt="Processing Pipeline">
+  <br><em>AI analyzes your video and generates narration</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/editor.png" width="700" alt="Editor">
+  <br><em>Edit narration, preview with video, and render</em>
+</p>
+
 ## Quick Start
 
 ### Option 1: Automated Setup (Recommended)
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/autonarrate.git
+git clone https://github.com/apoorvdixit88/autonarrate.git
 cd autonarrate
 
 # Run setup script
