@@ -546,6 +546,13 @@ async def analyze_segments(state: ProjectState, max_concurrent: int = 3) -> Proj
     # Sort by segment_id to maintain order
     updated_segments = sorted(updated_segments, key=lambda s: s.segment_id)
 
+    # Check for failed analyses - don't continue if vision failed
+    failed_segments = [s for s in updated_segments if s.description.startswith("[Analysis failed")]
+    if failed_segments:
+        error_msg = f"Vision analysis failed for {len(failed_segments)} segment(s): {failed_segments[0].description}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
     state = state.model_copy(update={"segments": updated_segments})
     project_store.save_state(state)
 
