@@ -40,7 +40,21 @@ Transform any screen recording or product demo into an engaging, professionally 
 
 ## Quick Start
 
-### Option 1: Automated Setup (Recommended)
+### Option 1: Setup with Claude Code (Easiest)
+
+Paste this prompt into Claude Code:
+
+```
+Clone https://github.com/apoorvdixit88/autonarrate and set it up:
+1. Clone the repo
+2. Create a Python virtual environment
+3. Install dependencies from requirements.txt
+4. Copy .env.example to .env
+5. Check if ffmpeg is installed, if not tell me how to install it
+6. Start the server with python run.py
+```
+
+### Option 2: Automated Setup
 
 ```bash
 # Clone the repository
@@ -52,7 +66,7 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-### Option 2: Manual Setup
+### Option 3: Manual Setup
 
 #### Prerequisites
 
