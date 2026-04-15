@@ -191,6 +191,120 @@ After reading each image file, provide your analysis.
         return "\n".join(cleaned_lines).strip()
 
 
+class OpenCodeVision:
+    """Vision analysis using OpenCode subprocess."""
+
+    def __init__(self, opencode_path: str = "opencode"):
+        self.opencode_path = opencode_path
+
+    async def analyze_segment(
+        self,
+        frames: list[FrameData],
+        segment_id: int,
+        start_time: float,
+        end_time: float,
+        context: Optional[str] = None
+    ) -> str:
+        """Analyze segment using OpenCode."""
+        if not frames:
+            return "[No frames to analyze]"
+
+        frame_paths = [f.frame_path for f in frames]
+        prompt = self._build_segment_prompt(frame_paths, segment_id, start_time, end_time, context)
+
+        try:
+            result = await asyncio.to_thread(
+                self._run_opencode,
+                prompt,
+                frame_paths
+            )
+            return result
+        except Exception as e:
+            logger.error(f"OpenCode analysis failed: {e}")
+            return f"[Analysis failed: {e}]"
+
+    def _build_segment_prompt(
+        self,
+        frame_paths: list[str],
+        segment_id: int,
+        start_time: float,
+        end_time: float,
+        context: Optional[str] = None
+    ) -> str:
+        """Build prompt for segment analysis."""
+        duration = end_time - start_time
+
+        prompt = f"""Analyze this video segment (segment {segment_id + 1}, {start_time:.1f}s to {end_time:.1f}s, duration {duration:.1f}s).
+
+I'm showing you {len(frame_paths)} key frames from this segment. Describe what's happening:
+
+1. What is the user doing or what is being demonstrated?
+2. What UI elements, screens, or content are visible?
+3. What's the progression or flow across these frames?
+
+Be specific and descriptive but concise (3-5 sentences). Focus on what would be useful for narration."""
+
+        if context:
+            prompt = f"Video context: {context}\n\n{prompt}"
+
+        return prompt
+
+    def _run_opencode(self, prompt: str, image_paths: list[str]) -> str:
+        """Run OpenCode with multiple images."""
+        images_list = "\n".join([f"- {p}" for p in image_paths])
+        full_prompt = f"""Read and analyze these video frame images:
+{images_list}
+
+After reading each image file, provide your analysis.
+
+{prompt}"""
+
+        cmd = [
+            self.opencode_path,
+            "-p", full_prompt,
+            "--dangerously-skip-permissions"
+        ]
+
+        logger.info(f"Running OpenCode for {len(image_paths)} frames")
+
+        work_dir = Path(image_paths[0]).parent if image_paths else Path.cwd()
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=180,
+            cwd=work_dir
+        )
+
+        if result.returncode != 0:
+            logger.error(f"OpenCode error: {result.stderr}")
+            raise RuntimeError(f"OpenCode failed: {result.stderr}")
+
+        output = result.stdout.strip()
+        return self._clean_output(output)
+
+    def _clean_output(self, output: str) -> str:
+        """Clean OpenCode output to extract just the analysis."""
+        lines = output.split("\n")
+        cleaned_lines = []
+
+        skip_patterns = [
+            "Tool call:",
+            "Reading file:",
+            "╭", "╰", "│",
+            "```",
+        ]
+
+        for line in lines:
+            if any(p in line for p in skip_patterns):
+                continue
+            if line.strip():
+                cleaned_lines.append(line)
+
+        return "\n".join(cleaned_lines).strip()
+
+
 class OllamaVision:
     """Fallback vision analysis using Ollama."""
 
@@ -241,12 +355,159 @@ Describe what you see - UI elements, actions, content. Be concise (3-5 sentences
             return f"[Analysis failed: {e}]"
 
 
+class OpenAIVision:
+    """Vision analysis using OpenAI API directly."""
+
+    def __init__(self, api_key: str, model: str = "gpt-4o"):
+        self.api_key = api_key
+        self.model = model
+
+    async def analyze_segment(
+        self,
+        frames: list[FrameData],
+        segment_id: int,
+        start_time: float,
+        end_time: float,
+        context: Optional[str] = None
+    ) -> str:
+        """Analyze segment using OpenAI Vision API."""
+        import base64
+        import httpx
+
+        if not frames:
+            return "[No frames to analyze]"
+
+        duration = end_time - start_time
+        prompt = f"""Analyze this video segment (segment {segment_id + 1}, {start_time:.1f}s to {end_time:.1f}s, duration {duration:.1f}s).
+
+Describe what's happening:
+1. What is the user doing or what is being demonstrated?
+2. What UI elements, screens, or content are visible?
+3. What's the progression or flow?
+
+Be specific and descriptive but concise (3-5 sentences). Focus on what would be useful for narration.
+{"Video context: " + context if context else ""}"""
+
+        # Encode images
+        content = [{"type": "text", "text": prompt}]
+        for frame in frames[:4]:  # Limit to 4 frames
+            with open(frame.frame_path, "rb") as f:
+                image_data = base64.b64encode(f.read()).decode()
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{image_data}"}
+            })
+
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json={
+                        "model": self.model,
+                        "messages": [{"role": "user", "content": content}],
+                        "max_tokens": 500
+                    }
+                )
+                response.raise_for_status()
+                result = response.json()
+                return result["choices"][0]["message"]["content"]
+        except Exception as e:
+            logger.error(f"OpenAI analysis failed: {e}")
+            return f"[Analysis failed: {e}]"
+
+
+class AnthropicVision:
+    """Vision analysis using Anthropic API directly."""
+
+    def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514"):
+        self.api_key = api_key
+        self.model = model
+
+    async def analyze_segment(
+        self,
+        frames: list[FrameData],
+        segment_id: int,
+        start_time: float,
+        end_time: float,
+        context: Optional[str] = None
+    ) -> str:
+        """Analyze segment using Anthropic Vision API."""
+        import base64
+        import httpx
+
+        if not frames:
+            return "[No frames to analyze]"
+
+        duration = end_time - start_time
+        prompt = f"""Analyze this video segment (segment {segment_id + 1}, {start_time:.1f}s to {end_time:.1f}s, duration {duration:.1f}s).
+
+Describe what's happening:
+1. What is the user doing or what is being demonstrated?
+2. What UI elements, screens, or content are visible?
+3. What's the progression or flow?
+
+Be specific and descriptive but concise (3-5 sentences). Focus on what would be useful for narration.
+{"Video context: " + context if context else ""}"""
+
+        # Build content with images
+        content = []
+        for frame in frames[:4]:  # Limit to 4 frames
+            with open(frame.frame_path, "rb") as f:
+                image_data = base64.b64encode(f.read()).decode()
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": image_data
+                }
+            })
+        content.append({"type": "text", "text": prompt})
+
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": self.api_key,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json"
+                    },
+                    json={
+                        "model": self.model,
+                        "max_tokens": 500,
+                        "messages": [{"role": "user", "content": content}]
+                    }
+                )
+                response.raise_for_status()
+                result = response.json()
+                return result["content"][0]["text"]
+        except Exception as e:
+            logger.error(f"Anthropic analysis failed: {e}")
+            return f"[Analysis failed: {e}]"
+
+
 def get_vision_service():
     """Get the configured vision service."""
     if settings.vision_backend == "ollama":
         return OllamaVision(
             model=settings.ollama_model,
             host=settings.ollama_host
+        )
+    elif settings.vision_backend == "opencode":
+        return OpenCodeVision(
+            opencode_path=settings.opencode_path
+        )
+    elif settings.vision_backend == "openai":
+        return OpenAIVision(
+            api_key=settings.openai_api_key,
+            model=settings.openai_model
+        )
+    elif settings.vision_backend == "anthropic":
+        return AnthropicVision(
+            api_key=settings.anthropic_api_key,
+            model=settings.anthropic_model
         )
     else:
         return ClaudeCodeVision(
