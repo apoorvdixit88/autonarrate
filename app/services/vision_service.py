@@ -528,16 +528,30 @@ async def analyze_segments(state: ProjectState, max_concurrent: int = 3) -> Proj
     # Create semaphore to limit concurrent API calls
     semaphore = asyncio.Semaphore(max_concurrent)
 
-    async def analyze_one(segment):
+    async def analyze_one(segment, max_retries: int = 2):
         async with semaphore:
             logger.info(f"Analyzing segment {segment.segment_id + 1}/{len(state.segments)}")
-            description = await vision.analyze_segment(
-                frames=segment.frames,
-                segment_id=segment.segment_id,
-                start_time=segment.start_time,
-                end_time=segment.end_time,
-                context=state.context
-            )
+
+            for attempt in range(max_retries):
+                description = await vision.analyze_segment(
+                    frames=segment.frames,
+                    segment_id=segment.segment_id,
+                    start_time=segment.start_time,
+                    end_time=segment.end_time,
+                    context=state.context
+                )
+
+                # Check if analysis succeeded
+                if not description.startswith("[Analysis failed"):
+                    return segment.model_copy(update={"description": description})
+
+                # Retry if failed
+                if attempt < max_retries - 1:
+                    logger.warning(f"Segment {segment.segment_id + 1} failed, retrying ({attempt + 2}/{max_retries})...")
+                    await asyncio.sleep(2)  # Brief pause before retry
+
+            # All retries exhausted
+            logger.error(f"Segment {segment.segment_id + 1} failed after {max_retries} attempts")
             return segment.model_copy(update={"description": description})
 
     # Run all analyses in parallel (with concurrency limit)
