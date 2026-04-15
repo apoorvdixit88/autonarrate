@@ -1168,6 +1168,13 @@
         let previewAudioCache = {};
 
         async function previewSegment(idx) {
+            console.log('=== PREVIEW SEGMENT CLICKED ===', idx);
+
+            // Stop any ongoing video playback and narration FIRST
+            videoPlayer.pause();
+            stopAllAudio();
+            isPlaying = false;
+
             // Prevent double-clicks while loading
             if (isPreviewLoading) {
                 console.log('Preview already loading, ignoring click');
@@ -1296,12 +1303,16 @@
                 return;
             }
 
+            console.log('Audio URL ready:', audioUrl.substring(0, 50) + '...');
+
             try {
                 currentPreviewAudio = new Audio(audioUrl);
+                console.log('Audio object created');
 
                 // Jump video to segment start and update UI
                 videoPlayer.currentTime = seg.start_time;
                 currentSegmentIndex = idx;
+                console.log(`Video set to start at ${seg.start_time}s, segment ends at ${seg.end_time}s`);
 
                 // Update UI to show active segment
                 document.querySelectorAll('.segment-card').forEach((el, i) => {
@@ -1373,19 +1384,102 @@
                 activePreviewSegment = idx;
                 isPreviewPaused = false;
 
+                // FREEZE FRAME PREVIEW: Pause video at segment's last frame while audio continues
+                let isFrozen = false;
+                let freezeTimeout = null;
+                const segStartTime = seg.start_time;
+                const segEndTime = seg.end_time;
+                const segmentDuration = segEndTime - segStartTime;
+                const lastFrameTime = segEndTime - 0.15; // Last frame of this segment
+
+                console.log(`PREVIEW: segment ${idx}, duration=${segmentDuration.toFixed(1)}s, will freeze at ${lastFrameTime.toFixed(1)}s`);
+
+                // Method 1: Set timeout to pause at exact time
+                freezeTimeout = setTimeout(() => {
+                    if (!isFrozen && currentPreviewAudio && !currentPreviewAudio.ended) {
+                        videoPlayer.pause();
+                        videoPlayer.currentTime = lastFrameTime; // Go to last frame
+                        isFrozen = true;
+                        isPlaying = false;
+
+                        const audioRemaining = currentPreviewAudio.duration - currentPreviewAudio.currentTime;
+                        setStatus(`⏸ FROZEN - audio has ${audioRemaining.toFixed(1)}s left`, 'saved');
+                        console.log(`FREEZE (timeout): paused at ${lastFrameTime.toFixed(1)}s, audio continues for ${audioRemaining.toFixed(1)}s`);
+                    }
+                }, (segmentDuration - 0.2) * 1000); // Pause slightly before segment ends
+
+                // Method 2: Also use timeupdate as backup
+                const freezeHandler = () => {
+                    if (isFrozen) {
+                        // Keep video paused while frozen
+                        if (!videoPlayer.paused) {
+                            videoPlayer.pause();
+                            videoPlayer.currentTime = lastFrameTime;
+                        }
+                        return;
+                    }
+
+                    if (videoPlayer.currentTime >= lastFrameTime && currentPreviewAudio && !currentPreviewAudio.ended) {
+                        videoPlayer.pause();
+                        videoPlayer.currentTime = lastFrameTime;
+                        isFrozen = true;
+                        isPlaying = false;
+                        clearTimeout(freezeTimeout);
+
+                        const audioRemaining = currentPreviewAudio.duration - currentPreviewAudio.currentTime;
+                        setStatus(`⏸ FROZEN - audio has ${audioRemaining.toFixed(1)}s left`, 'saved');
+                        console.log(`FREEZE (timeupdate): paused at ${lastFrameTime.toFixed(1)}s`);
+                    }
+                };
+                videoPlayer.addEventListener('timeupdate', freezeHandler);
+
+                // Cleanup function
+                const cleanupFreeze = () => {
+                    console.log('Preview cleanup - removing freeze handlers');
+                    clearTimeout(freezeTimeout);
+                    videoPlayer.removeEventListener('timeupdate', freezeHandler);
+                    isFrozen = false;
+                };
+
+                // Clean up when audio ends
+                const existingOnEnded = currentPreviewAudio.onended;
+                currentPreviewAudio.onended = () => {
+                    cleanupFreeze();
+                    if (existingOnEnded) existingOnEnded();
+                };
+
+                // Also clean up on error
+                const existingOnError = currentPreviewAudio.onerror;
+                currentPreviewAudio.onerror = () => {
+                    cleanupFreeze();
+                    if (existingOnError) existingOnError();
+                };
+
                 // Play both video and audio together
-                await Promise.all([
-                    currentPreviewAudio.play(),
-                    videoPlayer.play()
-                ]);
+                console.log('Starting playback...');
+                try {
+                    // Play audio first, then video to avoid AbortError
+                    await currentPreviewAudio.play();
+                    await videoPlayer.play();
+                    console.log('Playback started successfully');
+                } catch (playError) {
+                    // Ignore AbortError - it happens when pause() is called during play()
+                    if (playError.name !== 'AbortError') {
+                        throw playError;
+                    }
+                    console.log('Play interrupted (AbortError) - continuing anyway');
+                }
             } catch (error) {
+                // Ignore AbortError - it's normal when pausing during play
+                if (error.name === 'AbortError') {
+                    console.log('AbortError during preview - ignoring');
+                    return;
+                }
                 setStatus(`✗ Preview failed: ${error.message || 'Unknown error'}`, '');
                 console.error('Preview error:', error);
                 isPreviewLoading = false;
                 activePreviewSegment = -1;
                 isPreviewPaused = false;
-                // Restore narration if it was disabled
-                narrationEnabled = true;
 
                 // Reset button and segment card
                 if (previewBtn) {
@@ -1436,6 +1530,9 @@
         function playSegmentNarration(idx) {
             if (!narrationEnabled) return;
 
+            // Don't trigger new narration while frozen
+            if (isPlaybackFrozen) return;
+
             // Check if this segment is already in queue or playing
             if (idx === lastPlayedSegment) return;
             if (audioQueue.includes(idx)) return; // Already queued
@@ -1464,7 +1561,12 @@
             playNarrationNow(idx);
         }
 
-        // Actually play the narration for a segment
+        // Track freeze state for normal playback
+        let playbackFreezeTimeout = null;
+        let playbackFreezeHandler = null;
+        let isPlaybackFrozen = false;
+
+        // Actually play the narration for a segment with freeze frame support
         function playNarrationNow(idx) {
             // Safety check
             if (!segmentAudioCache[idx]) {
@@ -1472,18 +1574,89 @@
                 return;
             }
 
+            // Don't restart if already playing this segment or frozen
+            if (isPlaybackFrozen && lastPlayedSegment === idx) {
+                console.log(`Already frozen on segment ${idx + 1}, ignoring replay`);
+                return;
+            }
+
+            // Don't restart if already playing this segment's audio
+            if (isNarrationPlaying && lastPlayedSegment === idx && currentNarrationAudio && !currentNarrationAudio.ended) {
+                console.log(`Already playing segment ${idx + 1}, ignoring replay`);
+                return;
+            }
+
+            const seg = segments[idx];
+            const segEndTime = seg.end_time;
+            const lastFrameTime = segEndTime - 0.15;
+            const timeUntilEnd = Math.max(0, segEndTime - videoPlayer.currentTime);
+
             lastPlayedSegment = idx;
             isNarrationPlaying = true;
+            isPlaybackFrozen = false;
             currentNarrationAudio = segmentAudioCache[idx].cloneNode();
 
-            // When audio ends, check queue for next segment
+            // Clear any existing freeze handlers
+            if (playbackFreezeTimeout) clearTimeout(playbackFreezeTimeout);
+            if (playbackFreezeHandler) videoPlayer.removeEventListener('timeupdate', playbackFreezeHandler);
+
+            console.log(`Playing narration for segment ${idx + 1}, will freeze at ${lastFrameTime.toFixed(1)}s (in ${timeUntilEnd.toFixed(1)}s)`);
+
+            // Set up freeze timeout
+            playbackFreezeTimeout = setTimeout(() => {
+                if (isNarrationPlaying && currentNarrationAudio && !currentNarrationAudio.ended) {
+                    videoPlayer.pause();
+                    videoPlayer.currentTime = lastFrameTime;
+                    isPlaybackFrozen = true;
+                    const audioLeft = currentNarrationAudio.duration - currentNarrationAudio.currentTime;
+                    setStatus(`⏸ Frozen - narration has ${audioLeft.toFixed(1)}s left`, 'saved');
+                    console.log(`FROZEN (playback): segment ${idx + 1} at ${lastFrameTime.toFixed(1)}s`);
+                }
+            }, (timeUntilEnd - 0.1) * 1000);
+
+            // Backup freeze handler
+            playbackFreezeHandler = () => {
+                if (isPlaybackFrozen) {
+                    if (!videoPlayer.paused) {
+                        videoPlayer.pause();
+                        videoPlayer.currentTime = lastFrameTime;
+                    }
+                    return;
+                }
+                if (videoPlayer.currentTime >= lastFrameTime && isNarrationPlaying && currentNarrationAudio && !currentNarrationAudio.ended) {
+                    videoPlayer.pause();
+                    videoPlayer.currentTime = lastFrameTime;
+                    isPlaybackFrozen = true;
+                    clearTimeout(playbackFreezeTimeout);
+                    console.log(`FROZEN (timeupdate): segment ${idx + 1}`);
+                }
+            };
+            videoPlayer.addEventListener('timeupdate', playbackFreezeHandler);
+
+            // When audio ends, unfreeze and continue to next segment
             currentNarrationAudio.onended = () => {
+                console.log(`Narration ended for segment ${idx + 1}`);
+                clearTimeout(playbackFreezeTimeout);
+                videoPlayer.removeEventListener('timeupdate', playbackFreezeHandler);
+
                 isNarrationPlaying = false;
                 currentNarrationAudio = null;
-                processAudioQueue();
+
+                // Resume video if it was frozen
+                if (isPlaybackFrozen) {
+                    isPlaybackFrozen = false;
+                    isResumingFromFreeze = true; // Prevent play event from restarting same segment
+                    videoPlayer.play();
+                    setStatus(`▶ Continuing to next segment...`, 'saved');
+                }
+
+                // Don't call processAudioQueue here - let timeupdate naturally trigger next segment
             };
 
             currentNarrationAudio.onerror = () => {
+                clearTimeout(playbackFreezeTimeout);
+                videoPlayer.removeEventListener('timeupdate', playbackFreezeHandler);
+                isPlaybackFrozen = false;
                 isNarrationPlaying = false;
                 currentNarrationAudio = null;
                 processAudioQueue();
@@ -1491,6 +1664,8 @@
 
             currentNarrationAudio.play().catch(e => {
                 console.warn('Narration play failed:', e);
+                clearTimeout(playbackFreezeTimeout);
+                videoPlayer.removeEventListener('timeupdate', playbackFreezeHandler);
                 isNarrationPlaying = false;
                 processAudioQueue();
             });
@@ -1574,6 +1749,9 @@
             }
         });
 
+        // Track if we're resuming from freeze (to avoid resetting state)
+        let isResumingFromFreeze = false;
+
         videoPlayer.addEventListener('play', () => {
             playBtn.textContent = '⏸';
             isPlaying = true;
@@ -1588,7 +1766,14 @@
                 return; // Don't start regular narration
             }
 
-            // Clear any stale queue state
+            // If resuming from freeze, don't reset state or restart narration
+            if (isResumingFromFreeze) {
+                console.log('Resuming from freeze - not restarting narration');
+                isResumingFromFreeze = false;
+                return;
+            }
+
+            // Clear any stale queue state (only when starting fresh)
             audioQueue = [];
             lastPlayedSegment = -1;
 
@@ -1601,10 +1786,14 @@
         videoPlayer.addEventListener('pause', () => {
             playBtn.textContent = '▶';
             isPlaying = false;
-            stopNarration();
 
-            // If a preview is active, pause its audio too and update button
-            if (activePreviewSegment >= 0 && currentPreviewAudio && !isPreviewPaused) {
+            // Don't stop narration if we're frozen (freeze = intentional pause while audio continues)
+            if (!isPlaybackFrozen) {
+                stopNarration();
+            }
+
+            // If a preview is active (not frozen playback), pause its audio too
+            if (!isPlaybackFrozen && activePreviewSegment >= 0 && currentPreviewAudio && !isPreviewPaused) {
                 currentPreviewAudio.pause();
                 isPreviewPaused = true;
                 const previewBtn = document.querySelector(`#segment-${activePreviewSegment} .preview-btn`);
@@ -1892,6 +2081,7 @@
 
             const item = previewAllAudioQueue[currentPreviewAllIndex];
             const audio = item.audio;
+            const seg = segments[item.index];
 
             // Update UI to show current segment
             currentSegmentIndex = item.index;
@@ -1902,23 +2092,78 @@
                 el.classList.toggle('active', i === item.index);
             });
 
-            // Jump video to segment start
-            videoPlayer.currentTime = item.startTime;
+            // FREEZE FRAME for Preview All
+            let isFrozen = false;
+            let freezeTimeout = null;
+            const segStartTime = seg.start_time;
+            const segEndTime = seg.end_time;
+            const segmentDuration = segEndTime - segStartTime;
+            const lastFrameTime = segEndTime - 0.15;
 
+            console.log(`Preview All: segment ${item.index}, will freeze at ${lastFrameTime.toFixed(1)}s after ${segmentDuration.toFixed(1)}s`);
+
+            // Jump video to segment start
+            videoPlayer.currentTime = segStartTime;
+
+            // Set up freeze using timeout (more reliable)
+            freezeTimeout = setTimeout(() => {
+                if (!isFrozen && audio && !audio.ended) {
+                    videoPlayer.pause();
+                    videoPlayer.currentTime = lastFrameTime;
+                    isFrozen = true;
+                    isPlaying = false;
+                    const audioLeft = audio.duration - audio.currentTime;
+                    setStatus(`⏸ Frozen segment ${item.index + 1} - audio has ${audioLeft.toFixed(1)}s left`, 'saved');
+                    console.log(`FROZEN (timeout): segment ${item.index} at ${lastFrameTime.toFixed(1)}s`);
+                }
+            }, (segmentDuration - 0.2) * 1000);
+
+            // Backup freeze using timeupdate
+            const freezeHandler = () => {
+                if (isFrozen) {
+                    if (!videoPlayer.paused) {
+                        videoPlayer.pause();
+                        videoPlayer.currentTime = lastFrameTime;
+                    }
+                    return;
+                }
+                if (videoPlayer.currentTime >= lastFrameTime && audio && !audio.ended) {
+                    videoPlayer.pause();
+                    videoPlayer.currentTime = lastFrameTime;
+                    isFrozen = true;
+                    isPlaying = false;
+                    clearTimeout(freezeTimeout);
+                    setStatus(`⏸ Frozen segment ${item.index + 1}`, 'saved');
+                    console.log(`FROZEN (timeupdate): segment ${item.index}`);
+                }
+            };
+            videoPlayer.addEventListener('timeupdate', freezeHandler);
+
+            // Start video playback
+            videoPlayer.play();
+
+            // Cleanup and move to next segment when audio ends
             audio.onended = () => {
+                console.log(`Audio ended for segment ${item.index}, moving to next`);
+                clearTimeout(freezeTimeout);
+                videoPlayer.removeEventListener('timeupdate', freezeHandler);
+                isFrozen = false;
                 URL.revokeObjectURL(item.url);
                 currentPreviewAllIndex++;
-                // Small delay between segments for natural feel
                 setTimeout(() => playNextPreviewAudio(), 200);
             };
 
             audio.onerror = () => {
+                clearTimeout(freezeTimeout);
+                videoPlayer.removeEventListener('timeupdate', freezeHandler);
                 currentPreviewAllIndex++;
                 playNextPreviewAudio();
             };
 
             audio.play().catch(e => {
                 console.error('Audio play failed:', e);
+                clearTimeout(freezeTimeout);
+                videoPlayer.removeEventListener('timeupdate', freezeHandler);
                 currentPreviewAllIndex++;
                 playNextPreviewAudio();
             });

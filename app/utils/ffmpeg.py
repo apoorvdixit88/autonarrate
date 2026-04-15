@@ -79,6 +79,253 @@ def extract_frame(video_path: Path, timestamp: float, output_path: Path) -> bool
         return False
 
 
+def render_with_freeze_frames(
+    video_path: Path,
+    segments: list,
+    output_path: Path,
+    original_audio_volume: float = 0.05,
+    narration_volume: float = 2.5
+) -> bool:
+    """
+    Render video with freeze-frame effect when narration extends beyond video segment.
+    If narration is longer than the video segment, the last frame freezes until narration completes.
+    """
+    import shutil
+
+    logger.info("Rendering with freeze-frames for extended narration")
+
+    video_path = Path(video_path).resolve()
+    output_path = Path(output_path).resolve()
+
+    temp_dir = output_path.parent / "temp_freeze"
+    temp_dir.mkdir(exist_ok=True)
+
+    try:
+        # Get segments with audio and their durations
+        segments_with_audio = []
+        for s in segments:
+            if s.audio_path and Path(s.audio_path).exists():
+                dur_cmd = [
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "csv=p=0",
+                    str(s.audio_path)
+                ]
+                dur_result = subprocess.run(dur_cmd, capture_output=True, text=True)
+                audio_dur = float(dur_result.stdout.strip()) if dur_result.stdout.strip() else 0
+                segments_with_audio.append((s, audio_dur))
+
+        if not segments_with_audio:
+            logger.warning("No segments with audio found")
+            return False
+
+        # Get video properties for consistent freeze frame creation
+        meta = get_video_metadata(video_path)
+        video_width = meta.width
+        video_height = meta.height
+        video_fps = meta.fps
+        logger.info(f"Video properties: {video_width}x{video_height} @ {video_fps}fps")
+
+        # Calculate original video duration for comparison
+        original_total = sum(s.end_time - s.start_time for s, _ in segments_with_audio)
+        logger.info(f"Original video segments total: {original_total:.1f}s")
+
+        # Process each segment - extend with freeze frame if needed
+        segment_videos = []
+        segment_durations = []  # Track extended duration of each segment
+
+        for i, (seg, audio_dur) in enumerate(segments_with_audio):
+            seg_video = temp_dir / f"seg_{i:03d}.mp4"
+            video_start = seg.start_time
+            video_end = seg.end_time
+            video_dur = video_end - video_start
+
+            # Simple: if audio is longer than video segment, freeze the difference
+            freeze_duration = max(0, audio_dur - video_dur)
+            extended_duration = video_dur + freeze_duration
+            segment_durations.append(extended_duration)
+
+            logger.info(f"Segment {seg.segment_id}: video {video_dur:.1f}s, audio {audio_dur:.1f}s, freeze {freeze_duration:.1f}s, total {extended_duration:.1f}s")
+
+            if freeze_duration > 0.1:
+                # Need to extend with freeze frame
+                # Extract segment with consistent encoding
+                seg_normal = temp_dir / f"seg_{i:03d}_normal.mp4"
+                cmd1 = [
+                    "ffmpeg", "-y",
+                    "-ss", str(video_start),
+                    "-t", str(video_dur),
+                    "-i", str(video_path),
+                    "-c:v", "libx264", "-preset", "fast",
+                    "-pix_fmt", "yuv420p",
+                    "-r", str(video_fps),
+                    "-an",
+                    str(seg_normal)
+                ]
+                result1 = subprocess.run(cmd1, capture_output=True)
+                if result1.returncode != 0:
+                    logger.error(f"Segment {i} normal extraction failed: {result1.stderr.decode()[:200]}")
+
+                # Extract the last frame as PNG (better quality for re-encoding)
+                last_frame = temp_dir / f"seg_{i:03d}_last.png"
+                cmd2 = [
+                    "ffmpeg", "-y",
+                    "-ss", str(video_end - 0.1),
+                    "-i", str(video_path),
+                    "-frames:v", "1",
+                    str(last_frame)
+                ]
+                result2 = subprocess.run(cmd2, capture_output=True)
+                if result2.returncode != 0:
+                    logger.error(f"Segment {i} frame extraction failed: {result2.stderr.decode()[:200]}")
+
+                # Create freeze frame video with EXACT same properties as segment
+                seg_freeze = temp_dir / f"seg_{i:03d}_freeze.mp4"
+                cmd3 = [
+                    "ffmpeg", "-y",
+                    "-loop", "1",
+                    "-i", str(last_frame),
+                    "-t", str(freeze_duration),
+                    "-vf", f"scale={video_width}:{video_height}:force_original_aspect_ratio=decrease,pad={video_width}:{video_height}:(ow-iw)/2:(oh-ih)/2",
+                    "-c:v", "libx264", "-preset", "fast",
+                    "-pix_fmt", "yuv420p",
+                    "-r", str(video_fps),
+                    str(seg_freeze)
+                ]
+                result3 = subprocess.run(cmd3, capture_output=True)
+                if result3.returncode != 0:
+                    logger.error(f"Segment {i} freeze creation failed: {result3.stderr.decode()[:200]}")
+
+                # Check both files exist before concat
+                if not seg_normal.exists() or not seg_freeze.exists():
+                    logger.error(f"Segment {i}: Missing files for concat (normal={seg_normal.exists()}, freeze={seg_freeze.exists()})")
+                    # Fallback: just use the normal segment
+                    if seg_normal.exists():
+                        import shutil as sh
+                        sh.copy(seg_normal, seg_video)
+                    continue
+
+                # Concatenate using filter_complex for reliability
+                cmd4 = [
+                    "ffmpeg", "-y",
+                    "-i", str(seg_normal),
+                    "-i", str(seg_freeze),
+                    "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[outv]",
+                    "-map", "[outv]",
+                    "-c:v", "libx264", "-preset", "fast",
+                    "-pix_fmt", "yuv420p",
+                    str(seg_video)
+                ]
+                result4 = subprocess.run(cmd4, capture_output=True)
+                if result4.returncode != 0:
+                    logger.error(f"Segment {i} concat failed: {result4.stderr.decode()[:200]}")
+                    # Fallback: just use normal segment
+                    if seg_normal.exists():
+                        import shutil as sh
+                        sh.copy(seg_normal, seg_video)
+                else:
+                    logger.info(f"Segment {i}: Created extended video with {freeze_duration:.1f}s freeze")
+            else:
+                # No freeze needed, just extract segment
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-ss", str(video_start),
+                    "-t", str(video_dur),
+                    "-i", str(video_path),
+                    "-c:v", "libx264", "-preset", "fast",
+                    "-an",
+                    str(seg_video)
+                ]
+                subprocess.run(cmd, capture_output=True)
+
+            segment_videos.append(seg_video)
+
+        # Log total extended duration
+        extended_total = sum(segment_durations)
+        logger.info(f"Extended video segments total: {extended_total:.1f}s (added {extended_total - original_total:.1f}s freeze time)")
+
+        # Concatenate all segment videos
+        final_concat = temp_dir / "final_concat.txt"
+        with open(final_concat, "w") as f:
+            for sv in segment_videos:
+                f.write(f"file '{sv.resolve()}'\n")
+
+        concat_video = temp_dir / "concat_video.mp4"
+        cmd_concat = [
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", str(final_concat),
+            "-c:v", "libx264", "-preset", "fast",
+            str(concat_video)
+        ]
+        subprocess.run(cmd_concat, capture_output=True)
+
+        # Get the new video duration
+        dur_cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "csv=p=0",
+            str(concat_video)
+        ]
+        dur_result = subprocess.run(dur_cmd, capture_output=True, text=True)
+        new_video_duration = float(dur_result.stdout.strip()) if dur_result.stdout.strip() else 60.0
+        logger.info(f"Extended video duration: {new_video_duration:.1f}s")
+
+        # Now add audio with proper timing based on EXTENDED video durations
+        cmd_audio = ["ffmpeg", "-y", "-i", str(concat_video)]
+
+        for seg, _ in segments_with_audio:
+            cmd_audio.extend(["-i", str(Path(seg.audio_path).resolve())])
+
+        # Build filter complex - audio starts at cumulative extended segment positions
+        filter_parts = []
+        num_audios = len(segments_with_audio)
+
+        # Calculate cumulative start times based on extended segment durations
+        cumulative_time = 0.0
+        for i, (seg, audio_dur) in enumerate(segments_with_audio):
+            # Each audio starts at the beginning of its segment in the EXTENDED video
+            delay_ms = int(cumulative_time * 1000)
+            filter_parts.append(f"[{i+1}:a]adelay={delay_ms}|{delay_ms},volume={narration_volume}[a{i}]")
+            logger.info(f"Audio {i}: delay={delay_ms}ms, duration={audio_dur:.1f}s")
+            # Move to start of next segment using extended duration
+            cumulative_time += segment_durations[i]
+
+        audio_inputs = "".join(f"[a{i}]" for i in range(num_audios))
+        filter_parts.append(f"{audio_inputs}amix=inputs={num_audios}:duration=longest:normalize=0[narration]")
+
+        filter_complex = ";".join(filter_parts)
+
+        cmd_audio.extend([
+            "-filter_complex", filter_complex,
+            "-map", "0:v",
+            "-map", "[narration]",
+            "-c:v", "copy",
+            "-c:a", "aac", "-b:a", "192k",
+            "-t", str(new_video_duration),
+            str(output_path)
+        ])
+
+        logger.info(f"Adding audio to extended video")
+        result = subprocess.run(cmd_audio, capture_output=True)
+
+        if result.returncode != 0:
+            logger.error(f"Audio mixing failed: {result.stderr.decode()[:500]}")
+            return False
+
+        logger.info(f"Freeze-frame render complete: {output_path}")
+        return output_path.exists()
+
+    except Exception as e:
+        logger.error(f"Freeze-frame render error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+    finally:
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+
+
 def render_preview_style(
     video_path: Path,
     segments: list,

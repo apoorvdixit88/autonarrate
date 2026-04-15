@@ -67,10 +67,10 @@ def _combine_audio_sequential(
     Combine audio sequentially - each segment's audio plays COMPLETELY.
     Adds silence gaps to roughly align with video segments where possible.
     """
-    project_dir = project_store.get_project_dir(state.project_id)
+    project_dir = project_store.get_project_dir(state.project_id).resolve()
 
-    # Create a concat file
-    concat_file = project_dir / "concat_list.txt"
+    # Create a concat file - use absolute path
+    concat_file = (project_dir / "concat_list.txt").resolve()
     temp_files = []
 
     current_time = 0.0
@@ -79,7 +79,9 @@ def _combine_audio_sequential(
         for segment in segments_with_audio:
             segment_start = segment.start_time
             segment_duration = segment.end_time - segment.start_time
-            audio_duration = get_audio_duration(Path(segment.audio_path))
+            # Use absolute path for audio file
+            audio_path = Path(segment.audio_path).resolve()
+            audio_duration = get_audio_duration(audio_path)
 
             logger.info(f"Segment {segment.segment_id}: video={segment_start:.1f}-{segment.end_time:.1f}s ({segment_duration:.1f}s), audio={audio_duration:.1f}s")
 
@@ -87,14 +89,14 @@ def _combine_audio_sequential(
             if current_time < segment_start:
                 gap = segment_start - current_time
                 if gap > 0.05:  # Only add silence if gap is meaningful
-                    silence_file = project_dir / f"silence_{segment.segment_id}_pre.wav"
+                    silence_file = (project_dir / f"silence_{segment.segment_id}_pre.wav").resolve()
                     _create_silence(gap, silence_file)
                     temp_files.append(silence_file)
                     f.write(f"file '{silence_file}'\n")
                     current_time = segment_start
 
-            # Add the segment's audio (plays COMPLETELY)
-            f.write(f"file '{segment.audio_path}'\n")
+            # Add the segment's audio (plays COMPLETELY) - use absolute path
+            f.write(f"file '{audio_path}'\n")
             current_time += audio_duration
 
             # If audio was shorter than segment, we could add padding
@@ -102,7 +104,7 @@ def _combine_audio_sequential(
             # start right after this one finishes, even if that means
             # audio is slightly ahead of video
 
-    # Concatenate all files
+    # Concatenate all files - use absolute paths
     cmd = [
         "ffmpeg", "-y",
         "-f", "concat",
@@ -110,7 +112,7 @@ def _combine_audio_sequential(
         "-i", str(concat_file),
         "-c:a", "libmp3lame",
         "-b:a", "192k",
-        str(output_path)
+        str(output_path.resolve())
     ]
 
     try:
@@ -139,10 +141,10 @@ def _combine_audio_simple(
     """Simpler fallback method for combining audio."""
     logger.info("Using simple audio combination method")
 
-    project_dir = project_store.get_project_dir(state.project_id)
+    project_dir = project_store.get_project_dir(state.project_id).resolve()
 
-    # Create a concat file
-    concat_file = project_dir / "concat_list.txt"
+    # Create a concat file - use absolute path
+    concat_file = (project_dir / "concat_list.txt").resolve()
     temp_files = []
 
     current_time = 0.0
@@ -152,25 +154,27 @@ def _combine_audio_simple(
             # Add silence before this segment if needed
             gap = segment.start_time - current_time
             if gap > 0.1:
-                silence_file = project_dir / f"silence_{segment.segment_id}.wav"
+                silence_file = (project_dir / f"silence_{segment.segment_id}.wav").resolve()
                 _create_silence(gap, silence_file)
                 temp_files.append(silence_file)
                 f.write(f"file '{silence_file}'\n")
 
-            f.write(f"file '{segment.audio_path}'\n")
+            # Use absolute path for audio
+            audio_path = Path(segment.audio_path).resolve()
+            f.write(f"file '{audio_path}'\n")
 
-            audio_duration = get_audio_duration(Path(segment.audio_path))
+            audio_duration = get_audio_duration(audio_path)
             current_time = segment.start_time + audio_duration
 
     # Add trailing silence if needed
     if current_time < total_duration:
-        silence_file = project_dir / "silence_end.wav"
+        silence_file = (project_dir / "silence_end.wav").resolve()
         _create_silence(total_duration - current_time, silence_file)
         temp_files.append(silence_file)
         with open(concat_file, "a") as f:
             f.write(f"file '{silence_file}'\n")
 
-    # Concatenate all files
+    # Concatenate all files - use absolute paths
     cmd = [
         "ffmpeg", "-y",
         "-f", "concat",
@@ -178,7 +182,7 @@ def _combine_audio_simple(
         "-i", str(concat_file),
         "-c:a", "libmp3lame",
         "-b:a", "192k",
-        str(output_path)
+        str(output_path.resolve())
     ]
 
     try:

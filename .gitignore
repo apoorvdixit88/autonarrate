@@ -9,8 +9,12 @@ env/
 .venv/
 .env
 
-# Projects data
+# Projects data (user generated)
 projects/
+
+# Sample/test files
+sample_video.mp4
+voice_sample_*.mp3
 
 # IDE
 .idea/
@@ -25,3 +29,7 @@ Thumbs.db
 # Temp
 temp/
 *.tmp
+*.log
+
+# Claude
+.claude/

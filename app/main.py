@@ -487,6 +487,7 @@ async def regenerate_all_audio(project_id: str, background_tasks: BackgroundTask
 class RenderRequest(BaseModel):
     voice: str = "en-GB-LibbyNeural"
     speed_adjustments: dict = {}
+    freeze_frames: bool = True  # Freeze last frame when narration extends beyond video segment
 
 
 @app.post("/api/editor/{project_id}/render")
@@ -510,7 +511,7 @@ async def render_video(project_id: str, request: RenderRequest, background_tasks
 
     async def do_render():
         from app.services.tts_service import synthesize_all_segments
-        from app.utils.ffmpeg import render_preview_style, render_with_speed_adjustments
+        from app.utils.ffmpeg import render_preview_style, render_with_speed_adjustments, render_with_freeze_frames
 
         # Reload state to get latest changes
         current_state = project_store.load_state(project_id)
@@ -546,13 +547,21 @@ async def render_video(project_id: str, request: RenderRequest, background_tasks
                 speed_adjustments=speed_adjustments
             )
         else:
-            # Preview-style render - each audio plays at its segment start time
-            # This matches exactly what users hear during preview
-            success = render_preview_style(
-                video_path=video_path,
-                segments=current_state.segments,
-                output_path=output_path
-            )
+            if request.freeze_frames:
+                # Freeze-frame render - extends video with frozen frame when narration is longer
+                logger.info("Using freeze-frame render for extended narration")
+                success = render_with_freeze_frames(
+                    video_path=video_path,
+                    segments=current_state.segments,
+                    output_path=output_path
+                )
+            else:
+                # Preview-style render - each audio plays at its segment start time
+                success = render_preview_style(
+                    video_path=video_path,
+                    segments=current_state.segments,
+                    output_path=output_path
+                )
 
         if success:
             current_state = current_state.model_copy(update={

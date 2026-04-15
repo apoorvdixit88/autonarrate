@@ -42,17 +42,30 @@ async def generate_narration_script(state: ProjectState) -> ProjectState:
         # Fallback: use descriptions as narration
         narrations = [seg.description for seg in state.segments]
 
-    # Update segments with narration (no speed adjustments for AI-generated content)
+    # Update segments with narration, ensuring minimum word count
     updated_segments = []
     for i, segment in enumerate(state.segments):
         narration = narrations[i] if i < len(narrations) else segment.description
 
-        # Log if AI exceeded word limit (for debugging)
         duration = segment.end_time - segment.start_time
         words = _count_words(narration)
+        min_words = _get_min_words(duration)
         max_words = _get_max_words(duration)
+
+        # Check if narration is too short
+        if words < min_words:
+            logger.warning(f"Segment {i}: Only {words} words, minimum is {min_words}. Extending narration.")
+            # Extend with description context
+            if segment.description and len(segment.description) > len(narration):
+                narration = f"{narration} {segment.description}"
+            else:
+                # Add generic filler based on context
+                narration = f"{narration} Let's take a closer look at what's happening here and understand the key details of this step."
+            words = _count_words(narration)
+            logger.info(f"Segment {i}: Extended to {words} words")
+
         if words > max_words:
-            logger.warning(f"Segment {i}: AI generated {words} words, max was {max_words}")
+            logger.info(f"Segment {i}: {words} words (max {max_words}) - OK, video will freeze")
 
         updated_segment = segment.model_copy(update={"narration": narration})
         updated_segments.append(updated_segment)
@@ -77,53 +90,68 @@ def _build_narration_prompt(
     segments_text = ""
     for seg in segments_info:
         duration = seg['duration']
-        max_words = int((duration / 60) * wpm)
-        # Minimum 8 words, leave 20% buffer for pauses
-        max_words = max(8, int(max_words * 0.8))
+        # Target words for this duration
+        target_words = int((duration / 60) * wpm)
+        # Minimum: at least 60% of target, or 15 words minimum (ensures substantial content)
+        min_words = max(15, int(target_words * 0.6))
+        # Maximum: 120% of target (we have freeze frames so slightly longer is OK)
+        max_words = max(20, int(target_words * 1.2))
 
         segments_text += f"""
 SEGMENT {seg['segment_id'] + 1}:
 - Time: {seg['start_time']:.1f}s - {seg['end_time']:.1f}s ({duration:.1f} seconds)
-- MAX WORDS: {max_words} words (STRICT LIMIT)
+- WORD COUNT: {min_words}-{max_words} words (aim for {target_words} words)
 - What happens: {seg['description'][:500]}
 """
 
-    prompt = f"""Write voiceover narration for a product walkthrough video. This should sound like ONE CONTINUOUS SCRIPT read by a single narrator - smooth and connected, not choppy separate sentences.
-{"Context: " + context if context else ""}
+    prompt = f"""Write ENGAGING voiceover narration for a product demo video. Create SUBSTANTIAL narration for each segment - never just a few words.
 
+{"PRODUCT CONTEXT: " + context if context else ""}
+
+SEGMENTS TO NARRATE:
 {segments_text}
 
-MOST IMPORTANT - NARRATIVE FLOW:
-Think of this as writing ONE script that happens to be divided into timed segments. When read aloud back-to-back, it should flow naturally like a conversation - NOT sound like separate disconnected statements.
+CRITICAL REQUIREMENTS:
 
-RULES:
-1. WORD COUNT IS STRICT - Each segment has a max word limit. Do NOT exceed it.
-2. ONE CONTINUOUS VOICE - Write as if you're giving a live demo to someone sitting next to you.
-3. CONNECT EVERY SEGMENT - Each segment should lead into the next. Use bridges like:
-   - "Now...", "Next...", "From here...", "And...", "So...", "Here..."
-   - "Once that's done...", "With that set up...", "Now that we've..."
-   - "You'll notice...", "This brings us to...", "Moving on..."
+1. SUBSTANTIAL NARRATION - Each segment MUST have meaningful content:
+   - NEVER write just 1-5 words for a segment
+   - Each segment should have AT LEAST the minimum word count shown
+   - Describe what's happening, explain why it matters, guide the viewer
+   - If the visual is simple, add context, tips, or explain the significance
 
-GOOD FLOW (reads as one continuous narration):
-"Let's start by opening the settings. [SEG 1] Now we can customize our preferences here. [SEG 2] Once you've made your selections, just hit save. [SEG 3] And that's it - your changes are applied instantly. [SEG 4]"
+2. CONTINUOUS NARRATIVE FLOW:
+   - Write as ONE continuous script divided into segments
+   - Each segment should connect to the next naturally
+   - Use bridges: "Now...", "Next...", "From here...", "Notice how...", "This allows us to..."
 
-BAD (choppy, disconnected):
-"The user opens settings." [SEG 1] "Preferences are displayed." [SEG 2] "The save button is clicked." [SEG 3] "Changes are saved." [SEG 4]
+3. ENGAGING STYLE:
+   - Conversational tone: "Let's", "we'll", "you can see", "notice how"
+   - Explain the WHY, not just the WHAT
+   - Add value: tips, context, benefits
+   - Sound like a friendly expert giving a personal demo
 
-STYLE:
-- Conversational: "Let's", "we'll", "you can", "notice how"
-- Short sentences that flow together
-- End segments with natural pause points, but lead into what's next
-- Skip obvious details - focus on what matters
+4. FILL THE TIME:
+   - The video will PAUSE if your narration is longer than the segment
+   - So it's BETTER to have slightly more narration than too little
+   - Empty silence during video playback is BAD - always have something to say
 
-OUTPUT FORMAT:
+EXAMPLE OF GOOD SUBSTANTIAL NARRATION:
+SEGMENT 1: (for a 5-second clip showing a dashboard)
+"Here's our main dashboard where you can see all your key metrics at a glance. Notice the real-time updates happening in the sidebar - that's your live transaction feed."
+
+EXAMPLE OF BAD MINIMAL NARRATION:
 SEGMENT 1:
-[narration that sets up the story]
+"The dashboard." (TOO SHORT! This leaves 4 seconds of silence!)
+
+OUTPUT FORMAT - Write SUBSTANTIAL narration for each:
+
+SEGMENT 1:
+[{min_words}-{max_words} words of engaging narration]
 
 SEGMENT 2:
-[continues naturally from segment 1]
+[continues the story with substantial content]
 
-...and so on for all {len(segments_info)} segments."""
+...continue for all {len(segments_info)} segments."""
 
     return prompt
 
@@ -195,10 +223,25 @@ def _get_max_words(duration: float, wpm: int = 130) -> int:
         wpm: Words per minute (130 is comfortable pace)
 
     Returns:
-        Max words (with 15% buffer for natural pauses)
+        Max words (with 20% buffer since we have freeze frames)
     """
-    max_words = int((duration / 60) * wpm * 0.85)
-    return max(8, max_words)  # Minimum 8 words
+    max_words = int((duration / 60) * wpm * 1.2)
+    return max(20, max_words)
+
+
+def _get_min_words(duration: float, wpm: int = 130) -> int:
+    """Calculate minimum words for a segment duration.
+
+    Args:
+        duration: Segment duration in seconds
+        wpm: Words per minute (130 is comfortable pace)
+
+    Returns:
+        Minimum words (at least 60% of target, minimum 15 words)
+    """
+    target_words = int((duration / 60) * wpm)
+    min_words = int(target_words * 0.6)
+    return max(15, min_words)  # Minimum 15 words to ensure substantial content
 
 
 def _calculate_speed_adjustment(narration: str, duration: float) -> Optional[float]:
