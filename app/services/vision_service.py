@@ -251,30 +251,25 @@ Be specific and descriptive but concise (3-5 sentences). Focus on what would be 
 
     def _run_opencode(self, prompt: str, image_paths: list[str]) -> str:
         """Run OpenCode with multiple images."""
-        images_list = "\n".join([f"- {p}" for p in image_paths])
-        full_prompt = f"""Read and analyze these video frame images:
-{images_list}
-
-After reading each image file, provide your analysis.
+        full_prompt = f"""Analyze these video frames and describe what's happening.
 
 {prompt}"""
 
-        cmd = [
-            self.opencode_path,
-            "-p", full_prompt,
-            "--dangerously-skip-permissions"
-        ]
+        # Build command: opencode run "prompt" -f file1 -f file2
+        cmd = [self.opencode_path, "run", full_prompt]
+
+        # Add each image as a file attachment (use absolute paths)
+        for img_path in image_paths:
+            abs_path = str(Path(img_path).resolve())
+            cmd.extend(["-f", abs_path])
 
         logger.info(f"Running OpenCode for {len(image_paths)} frames")
-
-        work_dir = Path(image_paths[0]).parent if image_paths else Path.cwd()
 
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=180,
-            cwd=work_dir
+            timeout=180
         )
 
         if result.returncode != 0:
