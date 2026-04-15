@@ -13,6 +13,7 @@ Transform any screen recording or product demo into an engaging, professionally 
 ## Features
 
 - **🤖 Claude Code Integration** - Uses your local Claude CLI for vision analysis (no API keys needed!)
+- **Ollama Support** - Or use Ollama for fully local, free processing
 - **Smart Scene Detection** - Automatically segments video based on visual changes
 - **Multiple Voice Options** - Choose from various natural-sounding voices
 - **Freeze Frame Support** - Video pauses on last frame when narration extends beyond segment
