@@ -13,6 +13,8 @@ Transform any screen recording or product demo into an engaging, professionally 
 ## Features
 
 - **🤖 Claude Code Integration** - Uses your local Claude CLI for vision analysis (no API keys needed!)
+- **OpenCode Support** - Works with OpenCode CLI and any LLM provider it supports
+- **Direct API Support** - Use OpenAI (GPT-4o) or Anthropic (Claude) APIs directly
 - **Ollama Support** - Or use Ollama for fully local, free processing
 - **Smart Scene Detection** - Automatically segments video based on visual changes
 - **Multiple Voice Options** - Choose from various natural-sounding voices
@@ -87,7 +89,7 @@ chmod +x setup.sh
    choco install ffmpeg
    ```
 
-3. **Claude Code CLI** (for AI narration) - Choose one:
+3. **AI Backend** (for video analysis) - Choose one:
 
    **Option A: Claude Code (Recommended)**
    ```bash
@@ -98,7 +100,34 @@ chmod +x setup.sh
    claude --version
    ```
 
-   **Option B: Ollama (Free, Local)**
+   **Option B: OpenCode (Multi-provider)**
+   ```bash
+   # Install OpenCode
+   curl -fsSL https://opencode.ai/install | bash
+   # or: brew install anomalyco/tap/opencode
+
+   # Connect to your preferred LLM provider
+   opencode
+   # Press /connect and choose: OpenAI, Anthropic, Gemini, Ollama, etc.
+   ```
+
+   **Option C: OpenAI API**
+   ```bash
+   # Just add your API key to .env
+   VISION_BACKEND=openai
+   OPENAI_API_KEY=sk-...
+   OPENAI_MODEL=gpt-4o  # or gpt-4-turbo, gpt-4o-mini
+   ```
+
+   **Option D: Anthropic API**
+   ```bash
+   # Just add your API key to .env
+   VISION_BACKEND=anthropic
+   ANTHROPIC_API_KEY=sk-ant-...
+   ANTHROPIC_MODEL=claude-sonnet-4-20250514
+   ```
+
+   **Option E: Ollama (Free, Local)**
    ```bash
    # Install Ollama
    curl -fsSL https://ollama.com/install.sh | sh
@@ -146,8 +175,16 @@ HOST=0.0.0.0
 PORT=3005
 DEBUG=true
 
-# Vision backend: "claude_code" or "ollama"
+# Vision backend: "claude_code", "opencode", "ollama", "openai", or "anthropic"
 VISION_BACKEND=claude_code
+
+# OpenAI settings (if using openai backend)
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o
+
+# Anthropic settings (if using anthropic backend)
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
 
 # Ollama settings (if using ollama backend)
 OLLAMA_MODEL=llama3.2-vision
@@ -159,6 +196,7 @@ TTS_VOICE=en-US-EmmaNeural
 # Paths
 PROJECTS_DIR=./projects
 CLAUDE_CODE_PATH=claude
+OPENCODE_PATH=opencode
 ```
 
 ## Usage

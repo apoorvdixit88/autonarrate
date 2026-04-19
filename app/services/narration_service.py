@@ -135,6 +135,13 @@ CRITICAL REQUIREMENTS:
    - So it's BETTER to have slightly more narration than too little
    - Empty silence during video playback is BAD - always have something to say
 
+5. PLAIN TEXT ONLY:
+   - NO markdown formatting (no **bold**, *italic*, # headers, etc.)
+   - This text will be spoken by a voice synthesizer
+   - Write flowing sentences, avoid too many short choppy sentences
+   - Use commas naturally, don't overuse periods - keep it conversational
+   - Write as natural speech, not formatted text
+
 EXAMPLE OF GOOD SUBSTANTIAL NARRATION:
 SEGMENT 1: (for a 5-second clip showing a dashboard)
 "Here's our main dashboard where you can see all your key metrics at a glance. Notice the real-time updates happening in the sidebar - that's your live transaction feed."

@@ -9,11 +9,19 @@ class Settings(BaseSettings):
     debug: bool = True
 
     # Vision backend
-    vision_backend: str = "claude_code"  # "claude_code" or "ollama"
+    vision_backend: str = "claude_code"  # "claude_code", "opencode", "ollama", "openai", or "anthropic"
 
     # Ollama settings
     ollama_model: str = "llama3.2-vision"
     ollama_host: str = "http://localhost:11434"
+
+    # OpenAI settings (if using openai backend)
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o"
+
+    # Anthropic settings (if using anthropic backend)
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-20250514"
 
     # TTS
     tts_voice: str = "en-US-ChristopherNeural"
@@ -21,6 +29,7 @@ class Settings(BaseSettings):
     # Paths
     projects_dir: Path = Path("./projects")
     claude_code_path: str = "claude"
+    opencode_path: str = "opencode"
 
     # Pipeline settings
     scene_threshold: float = 27.0

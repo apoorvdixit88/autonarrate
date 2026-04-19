@@ -1,4 +1,5 @@
 import asyncio
+import re
 from pathlib import Path
 from typing import Optional
 import edge_tts
@@ -11,6 +12,39 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def clean_text_for_tts(text: str) -> str:
+    """Remove markdown and special characters that TTS reads literally."""
+    if not text:
+        return text
+
+    # Remove markdown bold/italic: **text**, *text*, __text__, _text_
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)  # **bold**
+    text = re.sub(r'\*(.+?)\*', r'\1', text)       # *italic*
+    text = re.sub(r'__(.+?)__', r'\1', text)       # __underline__
+    text = re.sub(r'_(.+?)_', r'\1', text)         # _italic_
+
+    # Remove markdown headers: # Header
+    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+
+    # Remove markdown links: [text](url) -> text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+
+    # Remove markdown code: `code` and ```code```
+    text = re.sub(r'```[^`]*```', '', text)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+
+    # Remove bullet points: - item, * item
+    text = re.sub(r'^[\-\*]\s+', '', text, flags=re.MULTILINE)
+
+    # Remove numbered lists: 1. item
+    text = re.sub(r'^\d+\.\s+', '', text, flags=re.MULTILINE)
+
+    # Remove extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    return text
+
+
 async def synthesize_speech(
     text: str,
     output_path: Path,
@@ -18,7 +52,9 @@ async def synthesize_speech(
 ) -> bool:
     """Synthesize speech using Edge TTS."""
     try:
-        communicate = edge_tts.Communicate(text, voice)
+        # Clean text to remove markdown formatting
+        clean_text = clean_text_for_tts(text)
+        communicate = edge_tts.Communicate(clean_text, voice)
         await communicate.save(str(output_path))
         return output_path.exists()
     except Exception as e:
