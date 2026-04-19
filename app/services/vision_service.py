@@ -13,6 +13,43 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _clean_cli_output(output: str) -> str:
+    """Clean CLI tool output to extract just the analysis.
+
+    Shared helper for subprocess-based backends (ClaudeCode, OpenCode).
+    """
+    lines = output.split("\n")
+    cleaned_lines = []
+
+    skip_patterns = [
+        "Tool call:",
+        "Reading file:",
+        "╭", "╰", "│",
+        "```",
+    ]
+
+    for line in lines:
+        if any(p in line for p in skip_patterns):
+            continue
+        if line.strip():
+            cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines).strip()
+
+
+def _get_media_type(file_path: str) -> str:
+    """Get the correct MIME type based on file extension."""
+    ext = Path(file_path).suffix.lower()
+    mime_types = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }
+    return mime_types.get(ext, "image/jpeg")  # Default to jpeg
+
+
 class ClaudeCodeVision:
     """Vision analysis using Claude Code subprocess."""
 
@@ -171,24 +208,7 @@ After reading each image file, provide your analysis.
 
     def _clean_output(self, output: str) -> str:
         """Clean Claude Code output to extract just the analysis."""
-        # Remove common artifacts
-        lines = output.split("\n")
-        cleaned_lines = []
-
-        skip_patterns = [
-            "Tool call:",
-            "Reading file:",
-            "╭", "╰", "│",
-            "```",
-        ]
-
-        for line in lines:
-            if any(p in line for p in skip_patterns):
-                continue
-            if line.strip():
-                cleaned_lines.append(line)
-
-        return "\n".join(cleaned_lines).strip()
+        return _clean_cli_output(output)
 
 
 class OpenCodeVision:
@@ -277,27 +297,7 @@ Be specific and descriptive but concise (3-5 sentences). Focus on what would be 
             raise RuntimeError(f"OpenCode failed: {result.stderr}")
 
         output = result.stdout.strip()
-        return self._clean_output(output)
-
-    def _clean_output(self, output: str) -> str:
-        """Clean OpenCode output to extract just the analysis."""
-        lines = output.split("\n")
-        cleaned_lines = []
-
-        skip_patterns = [
-            "Tool call:",
-            "Reading file:",
-            "╭", "╰", "│",
-            "```",
-        ]
-
-        for line in lines:
-            if any(p in line for p in skip_patterns):
-                continue
-            if line.strip():
-                cleaned_lines.append(line)
-
-        return "\n".join(cleaned_lines).strip()
+        return _clean_cli_output(output)
 
 
 class OllamaVision:
@@ -386,11 +386,12 @@ Be specific and descriptive but concise (3-5 sentences). Focus on what would be 
         # Encode images
         content = [{"type": "text", "text": prompt}]
         for frame in frames[:4]:  # Limit to 4 frames
+            media_type = _get_media_type(frame.frame_path)
             with open(frame.frame_path, "rb") as f:
                 image_data = base64.b64encode(f.read()).decode()
             content.append({
                 "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{image_data}"}
+                "image_url": {"url": f"data:{media_type};base64,{image_data}"}
             })
 
         try:
@@ -448,13 +449,14 @@ Be specific and descriptive but concise (3-5 sentences). Focus on what would be 
         # Build content with images
         content = []
         for frame in frames[:4]:  # Limit to 4 frames
+            media_type = _get_media_type(frame.frame_path)
             with open(frame.frame_path, "rb") as f:
                 image_data = base64.b64encode(f.read()).decode()
             content.append({
                 "type": "image",
                 "source": {
                     "type": "base64",
-                    "media_type": "image/png",
+                    "media_type": media_type,
                     "data": image_data
                 }
             })
@@ -495,11 +497,21 @@ def get_vision_service():
             opencode_path=settings.opencode_path
         )
     elif settings.vision_backend == "openai":
+        if not settings.openai_api_key:
+            raise ValueError(
+                "OPENAI_API_KEY is required when using 'openai' backend. "
+                "Set it in your .env file."
+            )
         return OpenAIVision(
             api_key=settings.openai_api_key,
             model=settings.openai_model
         )
     elif settings.vision_backend == "anthropic":
+        if not settings.anthropic_api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY is required when using 'anthropic' backend. "
+                "Set it in your .env file."
+            )
         return AnthropicVision(
             api_key=settings.anthropic_api_key,
             model=settings.anthropic_model
@@ -529,11 +541,11 @@ async def analyze_segments(state: ProjectState, max_concurrent: int = 3) -> Proj
     def is_config_error(error_msg: str) -> bool:
         return any(err.lower() in error_msg.lower() for err in config_errors)
 
-    async def analyze_one(segment, max_retries: int = 2):
+    async def analyze_one(segment, max_attempts: int = 2):
         async with semaphore:
             logger.info(f"Analyzing segment {segment.segment_id + 1}/{len(state.segments)}")
 
-            for attempt in range(max_retries):
+            for attempt in range(max_attempts):
                 description = await vision.analyze_segment(
                     frames=segment.frames,
                     segment_id=segment.segment_id,
@@ -552,12 +564,12 @@ async def analyze_segments(state: ProjectState, max_concurrent: int = 3) -> Proj
                     raise RuntimeError(f"Vision backend misconfigured: {description}")
 
                 # Transient error - retry
-                if attempt < max_retries - 1:
-                    logger.warning(f"Segment {segment.segment_id + 1} failed, retrying ({attempt + 2}/{max_retries})...")
+                if attempt < max_attempts - 1:
+                    logger.warning(f"Segment {segment.segment_id + 1} failed, retrying (attempt {attempt + 2}/{max_attempts})...")
                     await asyncio.sleep(2)  # Brief pause before retry
 
-            # All retries exhausted
-            logger.error(f"Segment {segment.segment_id + 1} failed after {max_retries} attempts")
+            # All attempts exhausted
+            logger.error(f"Segment {segment.segment_id + 1} failed after {max_attempts} attempts")
             return segment.model_copy(update={"description": description})
 
     # Run all analyses in parallel (with concurrency limit)

@@ -178,6 +178,14 @@ DEBUG=true
 # Vision backend: "claude_code", "opencode", "ollama", "openai", or "anthropic"
 VISION_BACKEND=claude_code
 
+# OpenAI settings (if using openai backend)
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o
+
+# Anthropic settings (if using anthropic backend)
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
+
 # Ollama settings (if using ollama backend)
 OLLAMA_MODEL=llama3.2-vision
 OLLAMA_HOST=http://localhost:11434
@@ -188,6 +196,7 @@ TTS_VOICE=en-US-EmmaNeural
 # Paths
 PROJECTS_DIR=./projects
 CLAUDE_CODE_PATH=claude
+OPENCODE_PATH=opencode
 ```
 
 ## Usage
