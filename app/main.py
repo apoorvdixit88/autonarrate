@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pydantic import BaseModel
 
+from app import __version__
 from app.config import settings
 from app.models import ProjectResponse, PipelineStep, SegmentAnalysis
 from app.services.project_store import project_store
@@ -55,12 +56,8 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "ffmpeg": check_ffmpeg(),
-        "vision_backend": settings.vision_backend
-    }
+    """Liveness probe — returns service status and version."""
+    return {"status": "ok", "version": __version__}
 
 
 @app.get("/voices/preview")
