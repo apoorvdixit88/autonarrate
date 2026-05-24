@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pydantic import BaseModel
 
+from app import __version__
 from app.config import settings
 from app.models import ProjectResponse, PipelineStep, SegmentAnalysis
 from app.services.project_store import project_store
@@ -61,6 +62,12 @@ async def health_check():
         "ffmpeg": check_ffmpeg(),
         "vision_backend": settings.vision_backend
     }
+
+
+@app.get("/version")
+async def version():
+    """Return the installed package version."""
+    return {"version": __version__}
 
 
 @app.get("/voices/preview")
